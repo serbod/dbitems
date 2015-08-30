@@ -1,0 +1,109 @@
+object FormMdEditor: TFormMdEditor
+  Left = 230
+  Height = 346
+  Top = 134
+  Width = 537
+  Caption = 'FormMdEditor'
+  ClientHeight = 346
+  ClientWidth = 537
+  OnCreate = FormCreate
+  LCLVersion = '1.4.2.0'
+  object gbMdTree: TGroupBox
+    Left = 0
+    Height = 346
+    Top = 0
+    Width = 273
+    Align = alLeft
+    Caption = 'Metadata'
+    ClientHeight = 326
+    ClientWidth = 269
+    TabOrder = 0
+    object tvMdTree: TTreeView
+      Left = 4
+      Height = 318
+      Top = 4
+      Width = 261
+      Align = alClient
+      BorderSpacing.Around = 4
+      DefaultItemHeight = 18
+      PopupMenu = pmMdTree
+      TabOrder = 0
+      OnSelectionChanged = tvMdTreeSelectionChanged
+    end
+  end
+  object PanSelectedItem: TPanel
+    Left = 273
+    Height = 346
+    Top = 0
+    Width = 264
+    Align = alClient
+    BevelOuter = bvNone
+    TabOrder = 1
+  end
+  object alMdTree: TActionList
+    left = 162
+    top = 128
+    object actTableAdd: TAction
+      Category = 'Tables'
+      Caption = 'Add DB Table'
+      OnExecute = actTableAddExecute
+    end
+    object actTableDel: TAction
+      Category = 'Tables'
+      Caption = 'Delete DB Table'
+    end
+    object actTableFieldAdd: TAction
+      Category = 'TableField'
+      Caption = 'Add table field'
+      OnExecute = actTableFieldAddExecute
+    end
+    object actTableFieldDel: TAction
+      Category = 'TableField'
+      Caption = 'Delete table field'
+      OnExecute = actTableFieldDelExecute
+    end
+    object actSaveMdToFile: TAction
+      Category = 'Metadata'
+      Caption = 'Save MD to file'
+      OnExecute = actSaveMdToFileExecute
+    end
+    object actLoadMdFromFile: TAction
+      Category = 'Metadata'
+      Caption = 'Load MD from file'
+      OnExecute = actLoadMdFromFileExecute
+    end
+    object actTableFieldEdit: TAction
+      Category = 'TableField'
+      Caption = 'actTableFieldEdit'
+      OnExecute = actTableFieldEditExecute
+    end
+  end
+  object pmMdTree: TPopupMenu
+    left = 162
+    top = 216
+    object MenuItem1: TMenuItem
+      Action = actTableAdd
+    end
+    object MenuItem2: TMenuItem
+      Action = actTableDel
+    end
+    object MenuItem3: TMenuItem
+      Caption = '-'
+    end
+    object MenuItem4: TMenuItem
+      Action = actTableFieldAdd
+    end
+    object MenuItem5: TMenuItem
+      Action = actTableFieldDel
+    end
+    object MenuItem6: TMenuItem
+      Caption = '-'
+    end
+    object MenuItem7: TMenuItem
+      Action = actSaveMdToFile
+    end
+    object MenuItem8: TMenuItem
+      Action = actLoadMdFromFile
+    end
+  end
+end

@@ -1,0 +1,71 @@
+object FrameEditTable: TFrameEditTable
+  Left = 0
+  Height = 360
+  Top = 0
+  Width = 258
+  ClientHeight = 360
+  ClientWidth = 258
+  TabOrder = 0
+  DesignLeft = 608
+  DesignTop = 171
+  object lbTableName: TLabel
+    Left = 8
+    Height = 15
+    Top = 7
+    Width = 113
+    Caption = 'Table name (internal)'
+    ParentColor = False
+  end
+  object edTableName: TEdit
+    Left = 8
+    Height = 23
+    Top = 24
+    Width = 240
+    Anchors = [akTop, akLeft, akRight]
+    TabOrder = 0
+  end
+  object lbTableNameFull: TLabel
+    Left = 8
+    Height = 15
+    Top = 56
+    Width = 152
+    Caption = 'Table description (full name)'
+    ParentColor = False
+  end
+  object edTableDesc: TEdit
+    Left = 8
+    Height = 23
+    Top = 72
+    Width = 240
+    Anchors = [akTop, akLeft, akRight]
+    TabOrder = 1
+  end
+  object lbKeyFieldName: TLabel
+    Left = 8
+    Height = 15
+    Top = 104
+    Width = 78
+    Caption = 'Key field name'
+    ParentColor = False
+  end
+  object cbKeyFieldName: TComboBox
+    Left = 8
+    Height = 23
+    Top = 120
+    Width = 240
+    Anchors = [akTop, akLeft, akRight]
+    ItemHeight = 15
+    TabOrder = 2
+  end
+  object btnOK: TButton
+    Left = 173
+    Height = 25
+    Top = 320
+    Width = 75
+    Anchors = [akRight, akBottom]
+    Caption = 'OK'
+    ModalResult = 1
+    OnClick = btnOKClick
+    TabOrder = 3
+  end
+end

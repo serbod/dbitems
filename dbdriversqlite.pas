@@ -1,0 +1,295 @@
+unit DbDriverSqlite;
+
+{$mode objfpc}{$H+}
+
+interface
+
+uses
+  Classes, SysUtils, DbUnit, sqldb, sqlite3conn;
+
+type
+
+  { TDbDriverSQLite }
+
+  TDbDriverSQLite = class(TDbDriver)
+  private
+    db: TSQLite3Connection;
+    Active: boolean;
+    procedure CheckTable(TableInfo: TDbTableInfo);
+  protected
+    procedure DebugSQL(AMsg: string); virtual;
+  public
+    constructor Create();
+    //destructor Destroy(); override;
+    function Open(ADbName: string): boolean; override;
+    function Close(): boolean; override;
+    function GetTable(AItemList: TDbItemList; Filter: string=''): boolean; override;
+    function SetTable(AItemList: TDbItemList; Filter: string=''): boolean; override;
+    function GetDBItem(FValue: string): TDBItem; override;
+    function SetDBItem(FItem: TDBItem): boolean; override;
+  end;
+
+
+implementation
+
+// === TDbDriverSQLite ===
+constructor TDbDriverSQLite.Create();
+begin
+  inherited Create();
+  self.Active:=False;
+end;
+
+procedure TDbDriverSQLite.CheckTable(TableInfo: TDbTableInfo);
+var
+  sl: TStringList;
+  s, sn, st, sql: string;
+  i: integer;
+begin
+  if not Assigned(db) then Exit;
+  if TableInfo.Valid then Exit;
+  if Self.TablesList.IndexOf(TableInfo)>=0 then Exit;
+
+  // get table info
+  //sql:='SELECT * FROM sqlite_master WHERE type=''table'' and name='''+TableInfo.TableName+'''';
+  //DebugSQL(sql);
+  //rs:=db.SchemaTableInfo(TableInfo.TableName);
+
+  sl:=TStringList.Create();
+  db.GetFieldNames(TableInfo.TableName, sl);
+
+  if sl.Count<=0 then
+  begin
+    s:='';
+    for i:=0 to TableInfo.FieldsCount-1 do
+    begin
+      sn:=TableInfo.Names[i];
+      st:=TableInfo.Types[i];
+      if Length(s)>0 then s:=s+',';
+      s:=s+''''+sn+'''';
+      if sn='id' then
+      begin
+        s:=s+' INTEGER PRIMARY KEY NOT NULL';
+        TableInfo.KeyFieldName:=sn;
+      end
+      else if st='I' then s:=s+' INTEGER NOT NULL'
+      else if st='S' then s:=s+' TEXT NOT NULL'
+      else if st='B' then s:=s+' INTEGER NOT NULL'
+      else if st='D' then s:=s+' TEXT NOT NULL'
+      else if st='' then // nothing;
+      else if st[1]='L' then s:=s+' INTEGER NOT NULL';
+    end;
+    sql:='CREATE TABLE '''+TableInfo.TableName+''' ('+s+')';
+    DebugSQL(sql);
+    try
+      db.ExecuteDirect(sql);
+    finally
+    end;
+  end;
+  sl.Free;
+
+  TableInfo.Valid:=true;
+  Self.TablesList.Add(TableInfo);
+end;
+
+procedure TDbDriverSQLite.DebugSQL(AMsg: string);
+begin
+  if Assigned(OnDebugSQL) then OnDebugSQL(AMsg);
+end;
+
+function TDbDriverSQLite.Open(ADbName: string): boolean;
+begin
+  DbName:=ADbName;
+  Result:=True;
+  if Assigned(db) then FreeAndNil(db);
+  db:=TSQLite3Connection.Create(nil);
+  try
+    db.DatabaseName:=ADbName+'.sqlite';
+    db.Open();
+  except
+    FreeAndNil(db);
+    Result:=False;
+  end;
+  Active:=Result;
+end;
+
+function TDbDriverSQLite.Close(): boolean;
+begin
+  Result:=True;
+  TablesList.Clear();
+  if not Active then Exit;
+  if not Assigned(db) then Exit;
+  db.Close();
+  FreeAndNil(db);
+end;
+
+function TDbDriverSQLite.GetTable(AItemList: TDbItemList; Filter: string=''): boolean;
+var
+  //rs: IMkSqlStmt;
+  Query: TSQLQuery;
+  i, n, m: integer;
+  Item: TDbItem;
+  fn, sql: string;
+  fl: TStringList;
+  FilterOk: boolean;
+begin
+  Result:=False;
+  if not Active then Exit;
+  if not Assigned(AItemList) then Exit;
+  if not Assigned(db) then Exit;
+
+  CheckTable(AItemList.DbTableInfo);
+
+  fl:=TStringList.Create(); // filters
+  fl.CommaText:=Filter;
+
+  sql:='SELECT * FROM "'+AItemList.DbTableInfo.TableName+'"';
+  // filters
+  if fl.Count > 0 then sql:=sql+' WHERE ';
+  for m:=0 to fl.Count-1 do
+  begin
+    if m>0 then sql:=sql+' AND ';
+    sql:=sql+'"'+fl.Names[m]+'"="'+fl.ValueFromIndex[m]+'"';
+  end;
+  FreeAndNil(fl);
+
+  DebugSQL(sql);
+
+  Query:=TSQLQuery.Create(nil);
+  try
+    Query.DataBase:=db;
+    //rs:=db.Exec(sql);
+    Query.SQL.Text:=sql;
+    Query.Open();
+    while not Query.EOF do
+    begin
+      i := Query.FieldValues['id'];
+
+      Item := AItemList.GetItemByID(i);
+      if not Assigned(Item) then Item:=AItemList.NewItem();
+      for n:=0 to AItemList.DbTableInfo.FieldsCount-1 do
+      begin
+        fn:=AItemList.DbTableInfo.Names[n]; // field name
+        Item.SetValue(fn, Query.FieldValues[fn]);
+      end;
+      Query.Next();
+    end;
+    Result:=True;
+
+  finally
+    FreeAndNil(Query);
+  end;
+end;
+
+function TDbDriverSQLite.SetTable(AItemList: TDbItemList; Filter: string=''): boolean;
+var
+  i, n: integer;
+  Item: TDbItem;
+  fn, iv, vl, sql: string;
+begin
+  Result:=False;
+  if not Active then Exit;
+  if not Assigned(AItemList) then Exit;
+  if not Assigned(db) then Exit;
+  CheckTable(AItemList.DbTableInfo);
+
+  for i:=0 to AItemList.Count-1 do
+  begin
+    vl:='';
+    Item:=(AItemList[i] as TDbItem);
+    for n:=0 to AItemList.DbTableInfo.FieldsCount-1 do
+    begin
+      fn:=AItemList.DbTableInfo.Names[n]; // field name
+      iv:=Item.GetValue(fn);                 // field value
+      if n > 0 then vl:=vl+',';
+      vl:=vl+'"'+iv+'"';
+      //vl:=vl+fn+'='''+iv+'''';
+    end;
+    sql:='INSERT OR REPLACE INTO "'+AItemList.DbTableInfo.TableName+'" VALUES ('+vl+')';
+    DebugSQL(sql);
+    //sql:='UPDATE '+AItemList.DbTableInfo.TableName+' SET '+vl+' WHERE ROWID='+IntToStr(Item.ID);
+    try
+      db.ExecuteDirect(sql);
+      Result:=True;
+    finally
+    end;
+  end;
+end;
+
+function TDbDriverSQLite.GetDBItem(FValue: string): TDBItem;
+var
+  sTableName, sItemID, fn, sql: string;
+  i: Integer;
+  TableInfo: TDbTableInfo;
+  Query: TSQLQuery;
+begin
+  Result:=nil;
+  if not Assigned(db) then Exit;
+  i:=Pos('~', FValue);
+  sTableName:=Copy(FValue, 1, i-1);
+  sItemID:=Copy(FValue, i+1, MaxInt);
+  TableInfo:=Self.GetDbTableInfo(sTableName);
+  if not Assigned(TableInfo) then Exit;
+
+  sql:='SELECT * FROM '+TableInfo.TableName+' WHERE id="'+sItemID+'"';
+  DebugSQL(sql);
+
+  Query:=TSQLQuery.Create(nil);
+  try
+    Query.DataBase:=db;
+    Query.SQL.Text:=sql;
+    Query.Open();
+    while not Query.EOF do
+    begin
+      Result:=TDbItem.Create();
+      for i:=0 to TableInfo.FieldsCount-1 do
+      begin
+        fn:=TableInfo.Names[i];  // field name
+        Result.SetValue(fn, Query.FieldValues[fn]);
+      end;
+      Query.Next();
+    end;
+
+  finally
+    FreeAndNil(Query);
+  end;
+end;
+
+function TDbDriverSQLite.SetDBItem(FItem: TDBItem): boolean;
+var
+  n: integer;
+  Item: TDbItem;
+  TableInfo: TDbTableInfo;
+  fn, iv, vl, sql: string;
+begin
+  result:=false;
+  if not Active then Exit;
+  if not Assigned(FItem) then Exit;
+  if not Assigned(db) then Exit;
+
+  TableInfo:=FItem.DbTableInfo;
+  if not Assigned(TableInfo) then Exit;
+  CheckTable(TableInfo);
+
+  vl:='';
+  for n:=0 to TableInfo.FieldsCount-1 do
+  begin
+    fn:=TableInfo.Names[n]; // field name
+    iv:=FItem.GetValue(fn);
+    if n > 0 then vl:=vl+',';
+    vl:=vl+'"'+iv+'"';
+    //vl:=vl+fn+'='''+iv+'''';
+  end;
+  sql:='INSERT OR REPLACE INTO "'+TableInfo.TableName+'" VALUES ('+vl+')';
+  DebugSQL(sql);
+  //sql:='UPDATE '+AItemList.DbTableInfo.TableName+' SET '+vl+' WHERE ROWID='+IntToStr(Item.ID);
+  try
+    db.ExecuteDirect(sql);
+    Result:=True;
+
+  finally
+  end;
+end;
+
+
+end.
+
