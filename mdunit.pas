@@ -16,11 +16,12 @@ type
     DbTableInfoList: TStringList;
     Filename: string;
     procedure SaveToFile();
-    function LoadFromFile(): Boolean;
+    function LoadFromFile(): boolean;
     procedure AfterConstruction(); override;
     procedure BeforeDestruction(); override;
     function DbTableInfoToStorage(ADbTableInfo: TDbTableInfo): TDataStorage;
-    function DbTableInfoFromStorage(ADbTableInfo: TDbTableInfo; AStorage: TDataStorage): Boolean;
+    function DbTableInfoFromStorage(ADbTableInfo: TDbTableInfo;
+      AStorage: IDataStorage): boolean;
   end;
 
 implementation
@@ -29,68 +30,74 @@ implementation
 
 procedure TMdStorage.SaveToFile();
 var
-  Storage, SubStorage, ItemStorage: TDataStorage;
+  Storage, SubStorage, ItemStorage: IDataStorage;
   i: integer;
   Serializer: TDataSerializer;
 begin
-  if Filename='' then Exit;
+  if Filename = '' then
+    Exit;
 
-  SubStorage:=TDataStorage.Create(stList);
+  SubStorage := TDataStorage.Create(stList);
 
-  for i:=0 to DbTableInfoList.Count-1 do
+  for i := 0 to DbTableInfoList.Count - 1 do
   begin
-    ItemStorage:=DbTableInfoToStorage((DbTableInfoList.Objects[i] as TDbTableInfo));
-    SubStorage.Add('', ItemStorage);
+    ItemStorage := DbTableInfoToStorage((DbTableInfoList.Objects[i] as TDbTableInfo));
+    SubStorage.SetValue(ItemStorage);
   end;
 
-  Storage:=TDataStorage.Create(stDictionary);
-  Storage.Add('DataType', 'DbTableInfoList');
-  Storage.Add('Items', SubStorage);
+  Storage := TDataStorage.Create(stDictionary);
+  Storage.SetValue('DbTableInfoList', 'DataType');
+  Storage.SetValue(SubStorage, 'Items');
 
-  Serializer:=TDataSerializerBencode.Create();
+  Serializer := TDataSerializerBencode.Create();
   Serializer.StorageToFile(Storage, Filename);
   FreeAndNil(Serializer);
 
 end;
 
-function TMdStorage.LoadFromFile(): Boolean;
+function TMdStorage.LoadFromFile(): boolean;
 var
-  Storage, SubStorage, ItemStorage: TDataStorage;
+  Storage: IDataStorage;
+  SubStorage, ItemStorage: IDataStorage;
   i: integer;
   Serializer: TDataSerializer;
   DbTableInfo: TDbTableInfo;
 begin
-  Result:=False;
-  if Filename='' then Exit;
-  Storage:=TDataStorage.Create(stDictionary);
+  Result := False;
+  if Filename = '' then
+    Exit;
+  Storage := TDataStorage.Create(stDictionary);
 
-  Serializer:=TDataSerializerBencode.Create();
-  Result:=Serializer.StorageFromFile(Storage, Filename);
+  Serializer := TDataSerializerBencode.Create();
+  Result := Serializer.StorageFromFile(Storage, Filename);
   FreeAndNil(Serializer);
-  if not Result then Exit;
-  Result:=False;
+  if not Result then
+    Exit;
+  Result := False;
 
-  if Storage.GetString('DataType') <> 'DbTableInfoList' then Exit;
+  if Storage.GetString('DataType') <> 'DbTableInfoList' then
+    Exit;
 
-  SubStorage:=Storage.GetObject('Items');
-  if not Assigned(SubStorage) then Exit;
+  SubStorage := Storage.GetObject('Items');
+  if not Assigned(SubStorage) then
+    Exit;
 
-  for i:=0 to SubStorage.Count-1 do
+  for i := 0 to SubStorage.GetCount - 1 do
   begin
-    ItemStorage:=SubStorage.GetObject(i);
-    DbTableInfo:=TDbTableInfo.Create();
+    ItemStorage := SubStorage.GetObject(i);
+    DbTableInfo := TDbTableInfo.Create();
     if DbTableInfoFromStorage(DbTableInfo, ItemStorage) then
     begin
       DbTableInfoList.AddObject(DbTableInfo.TableName, DbTableInfo);
     end;
   end;
-  Result:=True;
+  Result := True;
 end;
 
 procedure TMdStorage.AfterConstruction();
 begin
   inherited AfterConstruction;
-  DbTableInfoList:=TStringList.Create();
+  DbTableInfoList := TStringList.Create();
 end;
 
 procedure TMdStorage.BeforeDestruction();
@@ -99,65 +106,68 @@ begin
   inherited BeforeDestruction;
 end;
 
-function TMdStorage.DbTableInfoToStorage(ADbTableInfo: TDbTableInfo
-  ): TDataStorage;
+function TMdStorage.DbTableInfoToStorage(ADbTableInfo: TDbTableInfo): TDataStorage;
 var
   Storage, SubStorage: TDataStorage;
   i: integer;
   TmpField: TDbFieldInfo;
 begin
-  Result:=TDataStorage.Create(stDictionary);
-  if not Assigned(ADbTableInfo) then Exit;
+  Result := TDataStorage.Create(stDictionary);
+  if not Assigned(ADbTableInfo) then
+    Exit;
 
-  SubStorage:=TDataStorage.Create(stList);
+  SubStorage := TDataStorage.Create(stList);
 
-  for i:=0 to ADbTableInfo.FieldsCount-1 do
+  for i := 0 to ADbTableInfo.FieldsCount - 1 do
   begin
-    TmpField:=ADbTableInfo.Fields[i];
-    Storage:=TDataStorage.Create(stDictionary);
-    Storage.Add('Name', TmpField.FieldName);
-    Storage.Add('Type', TmpField.FieldType);
-    Storage.Add('Desc', TmpField.FieldDescription);
-    SubStorage.Add('', Storage);
+    TmpField := ADbTableInfo.Fields[i];
+    Storage := TDataStorage.Create(stDictionary);
+    Storage.SetValue(TmpField.FieldName, 'Name');
+    Storage.SetValue(TmpField.FieldType, 'Type');
+    Storage.SetValue(TmpField.FieldDescription, 'Desc');
+    SubStorage.SetValue(Storage);
   end;
 
-  Result.Add('DataType', 'DbTableInfo');
-  Result.Add('DBName', ADbTableInfo.DBName);
-  Result.Add('TableName', ADbTableInfo.TableName);
-  Result.Add('TableDesc', ADbTableInfo.TableDescription);
-  Result.Add('KeyFieldName', ADbTableInfo.KeyFieldName);
-  Result.Add('Fields', SubStorage);
+  Result.SetValue('DbTableInfo', 'DataType');
+  Result.SetValue(ADbTableInfo.DBName, 'DBName');
+  Result.SetValue(ADbTableInfo.TableName, 'TableName');
+  Result.SetValue(ADbTableInfo.TableDescription, 'TableDesc');
+  Result.SetValue(ADbTableInfo.KeyFieldName, 'KeyFieldName');
+  Result.SetValue(SubStorage, 'Fields');
 
 end;
 
 function TMdStorage.DbTableInfoFromStorage(ADbTableInfo: TDbTableInfo;
-  AStorage: TDataStorage): Boolean;
+  AStorage: IDataStorage): boolean;
 var
-  SubStorage: TDataStorage;
-  SubStorageItem: TDataStorage;
+  SubStorage: IDataStorage;
+  SubStorageItem: IDataStorage;
   DbField: TDbFieldInfo;
-  i: Integer;
+  i: integer;
 begin
-  Result:=False;
-  if not Assigned(AStorage) then Exit;
-  if AStorage.StorageType <> stDictionary then Exit;
-  if AStorage.GetString('DataType') <> 'DbTableInfo' then Exit;
-  ADbTableInfo.DBName:=AStorage.GetString('DBName');
-  ADbTableInfo.TableName:=AStorage.GetString('TableName');
-  ADbTableInfo.TableDescription:=AStorage.GetString('TableDesc');
-  ADbTableInfo.KeyFieldName:=AStorage.GetString('KeyFieldName');
-  SubStorage:=AStorage.GetObject('Fields');
+  Result := False;
+  if not Assigned(AStorage) then
+    Exit;
+  if AStorage.GetStorageType <> stDictionary then
+    Exit;
+  if AStorage.GetString('DataType') <> 'DbTableInfo' then
+    Exit;
+  ADbTableInfo.DBName := AStorage.GetString('DBName');
+  ADbTableInfo.TableName := AStorage.GetString('TableName');
+  ADbTableInfo.TableDescription := AStorage.GetString('TableDesc');
+  ADbTableInfo.KeyFieldName := AStorage.GetString('KeyFieldName');
+  SubStorage := AStorage.GetObject('Fields');
   if Assigned(SubStorage) then
   begin
-    for i:=0 to SubStorage.Count-1 do
+    for i := 0 to SubStorage.GetCount - 1 do
     begin
-      SubStorageItem:=SubStorage.GetObject(i);
-      DbField:=ADbTableInfo.AddField(SubStorageItem.GetString('Name'), SubStorageItem.GetString('Type'));
-      DbField.FieldDescription:=SubStorageItem.GetString('Desc');
+      SubStorageItem := SubStorage.GetObject(i);
+      DbField := ADbTableInfo.AddField(SubStorageItem.GetString('Name'),
+        SubStorageItem.GetString('Type'));
+      DbField.FieldDescription := SubStorageItem.GetString('Desc');
     end;
   end;
-  Result:=True;
+  Result := True;
 end;
 
 end.
-
