@@ -52,7 +52,8 @@ type
     SelectedDbTableInfo: TDbTableInfo;
     SelectedDbFieldInfo: TDbFieldInfo;
     procedure Reset();
-    function AddItemToMdTree(AParentNode: TTreeNode; AName: string; AImageIndex: integer; AObject: TObject): TTreeNode;
+    function AddItemToMdTree(AParentNode: TTreeNode; AName: string;
+      AImageIndex: Integer; AObject: TObject): TTreeNode;
     procedure UpdateDbTableTree(AItem: TDbTableInfo);
   end;
 
@@ -82,8 +83,8 @@ var
   DbTableInfo: TDbTableInfo;
 begin
   // add new table
-  DbTableInfo:=TDbTableInfo.Create();
-  DbTableInfo.TableName:='new_table';
+  DbTableInfo := TDbTableInfo.Create();
+  DbTableInfo.TableName := 'new_table';
   MdStorage.DbTableInfoList.AddObject(DbTableInfo.TableName, DbTableInfo);
 
   // update metadata tree
@@ -98,7 +99,8 @@ end;
 procedure TFormMdEditor.actTableFieldAddExecute(Sender: TObject);
 begin
   // add field to selected table
-  if not Assigned(SelectedDbTableInfo) then Exit;
+  if not Assigned(SelectedDbTableInfo) then
+    Exit;
   SelectedDbTableInfo.AddField('new_field', 'S');
 
   // update metadata tree
@@ -107,7 +109,8 @@ end;
 
 procedure TFormMdEditor.actTableFieldEditExecute(Sender: TObject);
 begin
-  if not Assigned(SelectedDbTableInfo) then Exit;
+  if not Assigned(SelectedDbTableInfo) then
+    Exit;
 
 end;
 
@@ -118,8 +121,10 @@ end;
 
 procedure TFormMdEditor.actTableFieldDelExecute(Sender: TObject);
 begin
-  if not Assigned(SelectedDbFieldInfo) then Exit;
-  if not Assigned(SelectedDbTableInfo) then Exit;
+  if not Assigned(SelectedDbFieldInfo) then
+    Exit;
+  if not Assigned(SelectedDbTableInfo) then
+    Exit;
   SelectedDbTableInfo.DeleteField(SelectedDbFieldInfo.FieldName);
   UpdateDbTableTree(SelectedDbTableInfo);
 end;
@@ -135,14 +140,16 @@ var
   i: Integer;
   TmpFrame: TFrame;
 begin
-  if not Assigned(tvMdTree.Selected) then Exit;
-  if not Assigned(tvMdTree.Selected.Data) then Exit;
-  Obj:=TObject(tvMdTree.Selected.Data);
+  if not Assigned(tvMdTree.Selected) then
+    Exit;
+  if not Assigned(tvMdTree.Selected.Data) then
+    Exit;
+  Obj := TObject(tvMdTree.Selected.Data);
 
   // Clear item controls
-  SelectedDbFieldInfo:=nil;
-  SelectedDbTableInfo:=nil;
-  for i:=0 to PanSelectedItem.ControlCount-1 do
+  SelectedDbFieldInfo := nil;
+  SelectedDbTableInfo := nil;
+  for i := 0 to PanSelectedItem.ControlCount - 1 do
   begin
     PanSelectedItem.Controls[i].Free();
   end;
@@ -150,27 +157,27 @@ begin
   // Table selected
   if (Obj is TDbTableInfo) then
   begin
-    SelectedDbTableInfo:=(Obj as TDbTableInfo);
-    TmpFrame:=TFrameEditTable.Create(PanSelectedItem);
-    TmpFrame.Parent:=PanSelectedItem;
-    TmpFrame.Align:=alClient;
-    (TmpFrame as TFrameEditTable).MdStorage:=MdStorage;
-    (TmpFrame as TFrameEditTable).OnItemRename:=@ItemRenameHandler;
-    (TmpFrame as TFrameEditTable).DbTableInfo:=SelectedDbTableInfo;
+    SelectedDbTableInfo := (Obj as TDbTableInfo);
+    TmpFrame := TFrameEditTable.Create(PanSelectedItem);
+    TmpFrame.Parent := PanSelectedItem;
+    TmpFrame.Align := alClient;
+    (TmpFrame as TFrameEditTable).MdStorage := MdStorage;
+    (TmpFrame as TFrameEditTable).OnItemRename := @ItemRenameHandler;
+    (TmpFrame as TFrameEditTable).DbTableInfo := SelectedDbTableInfo;
   end;
 
   // Field selected
   if (Obj is TDbFieldInfo) then
   begin
-    SelectedDbFieldInfo:=(Obj as TDbFieldInfo);
-    SelectedDbTableInfo:=SelectedDbFieldInfo.TableInfo;
+    SelectedDbFieldInfo := (Obj as TDbFieldInfo);
+    SelectedDbTableInfo := SelectedDbFieldInfo.TableInfo;
     // show frame
-    TmpFrame:=TFrameEditTableField.Create(PanSelectedItem);
-    TmpFrame.Parent:=PanSelectedItem;
-    TmpFrame.Align:=alClient;
-    (TmpFrame as TFrameEditTableField).MdStorage:=MdStorage;
-    (TmpFrame as TFrameEditTableField).OnItemRename:=@ItemRenameHandler;
-    (TmpFrame as TFrameEditTableField).DbFieldInfo:=SelectedDbFieldInfo;
+    TmpFrame := TFrameEditTableField.Create(PanSelectedItem);
+    TmpFrame.Parent := PanSelectedItem;
+    TmpFrame.Align := alClient;
+    (TmpFrame as TFrameEditTableField).MdStorage := MdStorage;
+    (TmpFrame as TFrameEditTableField).OnItemRename := @ItemRenameHandler;
+    (TmpFrame as TFrameEditTableField).DbFieldInfo := SelectedDbFieldInfo;
   end;
 end;
 
@@ -178,42 +185,51 @@ procedure TFormMdEditor.ItemRenameHandler(Sender: TObject);
 var
   Obj: TObject;
 begin
-  if not Assigned(tvMdTree.Selected) then Exit;
-  if not Assigned(tvMdTree.Selected.Data) then Exit;
-  Obj:=TObject(tvMdTree.Selected.Data);
+  if not Assigned(tvMdTree.Selected) then
+    Exit;
+  if not Assigned(tvMdTree.Selected.Data) then
+    Exit;
+  Obj := TObject(tvMdTree.Selected.Data);
 
   // Field selected
   if (Obj is TDbFieldInfo) then
   begin
-    tvMdTree.Selected.Text:=(Obj as TDbFieldInfo).FieldName;
-    tvMdTree.Selected.ImageIndex:=FieldTypeToIconIndex( (Obj as TDbFieldInfo).FieldType );
+    tvMdTree.Selected.Text := (Obj as TDbFieldInfo).FieldName;
+    tvMdTree.Selected.ImageIndex :=
+      FieldTypeToIconIndex((Obj as TDbFieldInfo).FieldType);
   end;
 
   // Table selected
   if (Obj is TDbTableInfo) then
   begin
-    tvMdTree.Selected.Text:=(Obj as TDbTableInfo).TableName;
+    tvMdTree.Selected.Text := (Obj as TDbTableInfo).TableName;
     //tvMdTree.Selected.ImageIndex:=FieldTypeToIconIndex( (Obj as TDbFieldInfo).FieldType );
   end;
 end;
 
 function TFormMdEditor.FieldTypeToIconIndex(AFieldType: string): Integer;
 begin
-  Result:=ciIconItemString;
-  if AFieldType='S' then Result:=ciIconItemString
-  else if AFieldType='I' then Result:=ciIconItemInteger
-  else if AFieldType='T' then Result:=ciIconItemDateTime
-  else if AFieldType='N' then Result:=ciIconItemNumber
-  else if AFieldType='D' then Result:=ciIconItemBinaryData
-  else if Copy(AFieldType, 1, 1)='L' then Result:=ciIconItemLink;
+  Result := ciIconItemString;
+  if AFieldType = 'S' then
+    Result := ciIconItemString
+  else if AFieldType = 'I' then
+    Result := ciIconItemInteger
+  else if AFieldType = 'T' then
+    Result := ciIconItemDateTime
+  else if AFieldType = 'N' then
+    Result := ciIconItemNumber
+  else if AFieldType = 'D' then
+    Result := ciIconItemBinaryData
+  else if Copy(AFieldType, 1, 1) = 'L' then
+    Result := ciIconItemLink;
 end;
 
 procedure TFormMdEditor.Reset();
 var
   i: Integer;
 begin
-  MdStorage:=TMdStorage.Create();
-  MdStorage.Filename:='metadata';
+  MdStorage := TMdStorage.Create();
+  MdStorage.Filename := 'metadata';
   MdStorage.LoadFromFile();
 
   tvMdTree.Items.BeginUpdate();
@@ -222,24 +238,24 @@ begin
   tvMdTree.Items.Clear();
 
   // Add root folders to tree
-  DbTablesNode:=AddItemToMdTree(nil, 'DB Tables', ciIconItems, nil);
+  DbTablesNode := AddItemToMdTree(nil, 'DB Tables', ciIconItems, nil);
 
   // fill db tables list
-  for i:=0 to MdStorage.DbTableInfoList.Count-1 do
+  for i := 0 to MdStorage.DbTableInfoList.Count - 1 do
   begin
-    UpdateDbTableTree( (MdStorage.DbTableInfoList.Objects[i] as TDbTableInfo) );
+    UpdateDbTableTree((MdStorage.DbTableInfoList.Objects[i] as TDbTableInfo));
   end;
   tvMdTree.Items.EndUpdate();
 end;
 
-function TFormMdEditor.AddItemToMdTree(AParentNode: TTreeNode; AName: string;
-  AImageIndex: integer; AObject: TObject): TTreeNode;
+function TFormMdEditor.AddItemToMdTree(AParentNode: TTreeNode;
+  AName: string; AImageIndex: Integer; AObject: TObject): TTreeNode;
 begin
-  Result:=tvMdTree.Items.AddChild(AParentNode, Name);
-  Result.Data:=AObject;
-  Result.Text:=AName;
-  Result.ImageIndex:=AImageIndex;
-  Result.StateIndex:=AImageIndex;
+  Result := tvMdTree.Items.AddChild(AParentNode, Name);
+  Result.Data := AObject;
+  Result.Text := AName;
+  Result.ImageIndex := AImageIndex;
+  Result.StateIndex := AImageIndex;
 end;
 
 procedure TFormMdEditor.UpdateDbTableTree(AItem: TDbTableInfo);
@@ -248,27 +264,27 @@ var
   DbTableNode, FieldNode: TTreeNode;
   FieldType: string;
 begin
-  if not Assigned(AItem) then Exit;
+  if not Assigned(AItem) then
+    Exit;
   tvMdTree.Items.BeginUpdate();
 
   // find table node
-  DbTableNode:=tvMdTree.Items.FindNodeWithData(AItem);
+  DbTableNode := tvMdTree.Items.FindNodeWithData(AItem);
   if not Assigned(DbTableNode) then
   begin
     // not exists, create db table node
-    DbTableNode:=AddItemToMdTree(DbTablesNode, AItem.TableName, ciIconDbTable, AItem);
+    DbTableNode := AddItemToMdTree(DbTablesNode, AItem.TableName, ciIconDbTable, AItem);
   end;
 
   // re-create table fields nodes
   DbTableNode.DeleteChildren();
 
-  for i:=0 to AItem.FieldsCount-1 do
+  for i := 0 to AItem.FieldsCount - 1 do
   begin
-    n:=FieldTypeToIconIndex(AItem.Types[i]);
-    FieldNode:=AddItemToMdTree(DbTableNode, AItem.Names[i], n, AItem.Fields[i]);
+    n := FieldTypeToIconIndex(AItem.Types[i]);
+    FieldNode := AddItemToMdTree(DbTableNode, AItem.Names[i], n, AItem.Fields[i]);
   end;
   tvMdTree.Items.EndUpdate();
 end;
 
 end.
-

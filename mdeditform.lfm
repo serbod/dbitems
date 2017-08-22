@@ -7,7 +7,7 @@ object FormMdEditor: TFormMdEditor
   ClientHeight = 346
   ClientWidth = 537
   OnCreate = FormCreate
-  LCLVersion = '1.4.2.0'
+  LCLVersion = '1.9.0.0'
   object gbMdTree: TGroupBox
     Left = 0
     Height = 346
@@ -25,7 +25,6 @@ object FormMdEditor: TFormMdEditor
       Width = 261
       Align = alClient
       BorderSpacing.Around = 4
-      DefaultItemHeight = 18
       PopupMenu = pmMdTree
       TabOrder = 0
       OnSelectionChanged = tvMdTreeSelectionChanged
@@ -41,8 +40,8 @@ object FormMdEditor: TFormMdEditor
     TabOrder = 1
   end
   object alMdTree: TActionList
-    left = 162
-    top = 128
+    Left = 162
+    Top = 128
     object actTableAdd: TAction
       Category = 'Tables'
       Caption = 'Add DB Table'
@@ -79,8 +78,8 @@ object FormMdEditor: TFormMdEditor
     end
   end
   object pmMdTree: TPopupMenu
-    left = 162
-    top = 216
+    Left = 162
+    Top = 216
     object MenuItem1: TMenuItem
       Action = actTableAdd
     end

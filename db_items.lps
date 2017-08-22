@@ -2,13 +2,13 @@
 <CONFIG>
   <ProjectSession>
     <PathDelim Value="\"/>
-    <Version Value="9"/>
+    <Version Value="10"/>
     <BuildModes Active="Default"/>
-    <Units Count="13">
+    <Units Count="15">
       <Unit0>
         <Filename Value="db_items.lpr"/>
         <IsPartOfProject Value="True"/>
-        <UsageCount Value="45"/>
+        <UsageCount Value="63"/>
       </Unit0>
       <Unit1>
         <Filename Value="mdeditform.pas"/>
@@ -17,9 +17,8 @@
         <HasResources Value="True"/>
         <ResourceBaseClass Value="Form"/>
         <UnitName Value="MdEditForm"/>
-        <IsVisibleTab Value="True"/>
-        <CursorPos X="49" Y="122"/>
-        <UsageCount Value="45"/>
+        <CursorPos X="5" Y="290"/>
+        <UsageCount Value="63"/>
         <Loaded Value="True"/>
         <LoadedDesigner Value="True"/>
       </Unit1>
@@ -27,10 +26,11 @@
         <Filename Value="dbdriversqlite.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="DbDriverSqlite"/>
+        <IsVisibleTab Value="True"/>
         <EditorIndex Value="6"/>
-        <TopLine Value="10"/>
-        <CursorPos X="3" Y="96"/>
-        <UsageCount Value="45"/>
+        <TopLine Value="198"/>
+        <CursorPos X="27" Y="213"/>
+        <UsageCount Value="63"/>
         <Loaded Value="True"/>
       </Unit2>
       <Unit3>
@@ -38,9 +38,9 @@
         <IsPartOfProject Value="True"/>
         <UnitName Value="MdUnit"/>
         <EditorIndex Value="3"/>
-        <TopLine Value="10"/>
-        <CursorPos X="63" Y="147"/>
-        <UsageCount Value="45"/>
+        <TopLine Value="21"/>
+        <CursorPos X="14" Y="146"/>
+        <UsageCount Value="63"/>
         <Loaded Value="True"/>
       </Unit3>
       <Unit4>
@@ -48,9 +48,8 @@
         <IsPartOfProject Value="True"/>
         <UnitName Value="DataStorage"/>
         <EditorIndex Value="5"/>
-        <TopLine Value="252"/>
-        <CursorPos Y="262"/>
-        <UsageCount Value="45"/>
+        <CursorPos X="35" Y="264"/>
+        <UsageCount Value="63"/>
         <Loaded Value="True"/>
       </Unit4>
       <Unit5>
@@ -61,9 +60,9 @@
         <ResourceBaseClass Value="Frame"/>
         <UnitName Value="EditTableFieldFrame"/>
         <EditorIndex Value="1"/>
-        <TopLine Value="116"/>
-        <CursorPos Y="134"/>
-        <UsageCount Value="40"/>
+        <TopLine Value="62"/>
+        <CursorPos X="28" Y="131"/>
+        <UsageCount Value="58"/>
         <Loaded Value="True"/>
         <LoadedDesigner Value="True"/>
       </Unit5>
@@ -75,42 +74,42 @@
         <ResourceBaseClass Value="Frame"/>
         <UnitName Value="EditTableFrame"/>
         <EditorIndex Value="2"/>
-        <CursorPos X="11" Y="50"/>
-        <UsageCount Value="24"/>
+        <TopLine Value="69"/>
+        <CursorPos X="5" Y="98"/>
+        <UsageCount Value="42"/>
         <Loaded Value="True"/>
         <LoadedDesigner Value="True"/>
       </Unit6>
       <Unit7>
         <Filename Value="DbUnit.pas"/>
         <EditorIndex Value="4"/>
-        <TopLine Value="246"/>
-        <CursorPos X="43" Y="253"/>
-        <UsageCount Value="22"/>
+        <CursorPos X="29" Y="20"/>
+        <UsageCount Value="30"/>
         <Loaded Value="True"/>
       </Unit7>
       <Unit8>
         <Filename Value="C:\lazarus\fpc\2.6.4\source\packages\fcl-db\src\sqldb\sqlite\sqlite3conn.pp"/>
         <TopLine Value="926"/>
         <CursorPos X="3" Y="933"/>
-        <UsageCount Value="6"/>
+        <UsageCount Value="5"/>
       </Unit8>
       <Unit9>
         <Filename Value="C:\lazarus\fpc\2.6.4\source\packages\fcl-db\src\sqldb\sqldb.pp"/>
         <TopLine Value="1066"/>
         <CursorPos X="27" Y="1080"/>
-        <UsageCount Value="6"/>
+        <UsageCount Value="5"/>
       </Unit9>
       <Unit10>
         <Filename Value="C:\lazarus\fpc\2.6.4\source\packages\fcl-db\src\base\db.pas"/>
         <TopLine Value="1808"/>
         <CursorPos X="14" Y="1909"/>
-        <UsageCount Value="6"/>
+        <UsageCount Value="5"/>
       </Unit10>
       <Unit11>
         <Filename Value="..\acs\Src\classes\acs_audio.pas"/>
         <EditorIndex Value="-1"/>
         <TopLine Value="47"/>
-        <UsageCount Value="8"/>
+        <UsageCount Value="7"/>
         <DefaultSyntaxHighlighter Value="Delphi"/>
       </Unit11>
       <Unit12>
@@ -118,129 +117,143 @@
         <EditorIndex Value="-1"/>
         <TopLine Value="245"/>
         <CursorPos Y="252"/>
-        <UsageCount Value="13"/>
+        <UsageCount Value="12"/>
       </Unit12>
+      <Unit13>
+        <Filename Value="C:\fpcupdeluxe\fpcsrc\rtl\inc\objpas.inc"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="1027"/>
+        <CursorPos Y="1042"/>
+        <UsageCount Value="14"/>
+      </Unit13>
+      <Unit14>
+        <Filename Value="C:\fpcupdeluxe\lazarus\lcl\include\customform.inc"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="924"/>
+        <CursorPos Y="939"/>
+        <UsageCount Value="14"/>
+      </Unit14>
     </Units>
     <JumpHistory Count="30" HistoryIndex="29">
       <Position1>
-        <Filename Value="mdunit.pas"/>
-        <Caret Line="76" TopLine="55"/>
+        <Filename Value="DbUnit.pas"/>
+        <Caret Line="94" Column="58" TopLine="80"/>
       </Position1>
       <Position2>
-        <Filename Value="mdeditform.pas"/>
-        <Caret Line="150" TopLine="142"/>
+        <Filename Value="DbUnit.pas"/>
+        <Caret Line="101" Column="17" TopLine="96"/>
       </Position2>
       <Position3>
-        <Filename Value="mdunit.pas"/>
-        <Caret Line="75" TopLine="68"/>
+        <Filename Value="DbUnit.pas"/>
+        <Caret Line="100" Column="16" TopLine="85"/>
       </Position3>
       <Position4>
-        <Filename Value="datastorage.pas"/>
-        <Caret Line="254" TopLine="246"/>
+        <Filename Value="DbUnit.pas"/>
+        <Caret Line="89" Column="6" TopLine="79"/>
       </Position4>
       <Position5>
-        <Filename Value="datastorage.pas"/>
-        <Caret Line="255" TopLine="246"/>
+        <Filename Value="DbUnit.pas"/>
+        <Caret Line="331" Column="25" TopLine="316"/>
       </Position5>
       <Position6>
-        <Filename Value="datastorage.pas"/>
-        <Caret Line="256" TopLine="246"/>
+        <Filename Value="DbUnit.pas"/>
+        <Caret Line="359" Column="6" TopLine="344"/>
       </Position6>
       <Position7>
-        <Filename Value="datastorage.pas"/>
-        <Caret Line="257" TopLine="253"/>
+        <Filename Value="DbUnit.pas"/>
+        <Caret Line="408" Column="30" TopLine="393"/>
       </Position7>
       <Position8>
-        <Filename Value="datastorage.pas"/>
-        <Caret Line="259" TopLine="253"/>
+        <Filename Value="DbUnit.pas"/>
+        <Caret Line="413" Column="35" TopLine="397"/>
       </Position8>
       <Position9>
-        <Filename Value="datastorage.pas"/>
-        <Caret Line="260" Column="54" TopLine="252"/>
+        <Filename Value="DbUnit.pas"/>
+        <Caret Line="425" Column="38" TopLine="410"/>
       </Position9>
       <Position10>
-        <Filename Value="mdunit.pas"/>
-        <Caret Line="75" TopLine="68"/>
+        <Filename Value="DbUnit.pas"/>
+        <Caret Line="472" Column="23" TopLine="457"/>
       </Position10>
       <Position11>
-        <Filename Value="datastorage.pas"/>
-        <Caret Line="260" TopLine="252"/>
+        <Filename Value="DbUnit.pas"/>
+        <Caret Line="110" Column="23" TopLine="88"/>
       </Position11>
       <Position12>
-        <Filename Value="datastorage.pas"/>
-        <Caret Line="262" TopLine="252"/>
+        <Filename Value="DbUnit.pas"/>
+        <Caret Line="112" Column="78" TopLine="88"/>
       </Position12>
       <Position13>
-        <Filename Value="mdunit.pas"/>
-        <Caret Line="76" TopLine="71"/>
+        <Filename Value="DbUnit.pas"/>
+        <Caret Line="354" Column="27" TopLine="330"/>
       </Position13>
       <Position14>
-        <Filename Value="mdunit.pas"/>
-        <Caret Line="78" TopLine="71"/>
+        <Filename Value="DbUnit.pas"/>
+        <Caret Line="381" Column="16" TopLine="357"/>
       </Position14>
       <Position15>
-        <Filename Value="mdunit.pas"/>
-        <Caret Line="79" Column="44" TopLine="77"/>
+        <Filename Value="DbUnit.pas"/>
+        <Caret Line="610" Column="20" TopLine="586"/>
       </Position15>
       <Position16>
-        <Filename Value="mdunit.pas"/>
-        <Caret Line="81" TopLine="77"/>
+        <Filename Value="DbUnit.pas"/>
+        <Caret Line="105" Column="19" TopLine="84"/>
       </Position16>
       <Position17>
-        <Filename Value="mdunit.pas"/>
-        <Caret Line="82" TopLine="77"/>
+        <Filename Value="DbUnit.pas"/>
+        <Caret Line="329" Column="19" TopLine="314"/>
       </Position17>
       <Position18>
-        <Filename Value="mdunit.pas"/>
-        <Caret Line="84" TopLine="77"/>
+        <Filename Value="DbUnit.pas"/>
+        <Caret Line="106" Column="15" TopLine="92"/>
       </Position18>
       <Position19>
-        <Filename Value="mdeditform.pas"/>
-        <Caret Line="45" Column="25" TopLine="41"/>
+        <Filename Value="DbUnit.pas"/>
+        <Caret Line="115" Column="15" TopLine="101"/>
       </Position19>
       <Position20>
-        <Filename Value="mdeditform.pas"/>
-        <Caret Line="46" Column="28" TopLine="37"/>
+        <Filename Value="DbUnit.pas"/>
+        <Caret Line="112" Column="98" TopLine="94"/>
       </Position20>
       <Position21>
-        <Filename Value="mdeditform.pas"/>
-        <Caret Line="145" Column="74" TopLine="133"/>
+        <Filename Value="DbUnit.pas"/>
+        <Caret Line="349" Column="15" TopLine="335"/>
       </Position21>
       <Position22>
-        <Filename Value="edittableframe.pas"/>
-        <Caret Line="8" Column="73"/>
+        <Filename Value="DbUnit.pas"/>
+        <Caret Line="377" Column="6" TopLine="362"/>
       </Position22>
       <Position23>
-        <Filename Value="edittableframe.pas"/>
-        <Caret Line="33" Column="31" TopLine="20"/>
+        <Filename Value="DbUnit.pas"/>
+        <Caret Line="456" Column="54" TopLine="441"/>
       </Position23>
       <Position24>
-        <Filename Value="edittableframe.pas"/>
-        <Caret Line="62" Column="35" TopLine="50"/>
+        <Filename Value="DbUnit.pas"/>
+        <Caret Line="468" Column="40" TopLine="454"/>
       </Position24>
       <Position25>
-        <Filename Value="edittableframe.pas"/>
-        <Caret Line="89" Column="54" TopLine="80"/>
+        <Filename Value="mdeditform.pas"/>
+        <Caret Line="141" Column="26" TopLine="128"/>
       </Position25>
       <Position26>
-        <Filename Value="mdeditform.pas"/>
-        <Caret Line="187" Column="7" TopLine="173"/>
+        <Filename Value="dbdriversqlite.pas"/>
+        <Caret Line="324" Column="5" TopLine="295"/>
       </Position26>
       <Position27>
-        <Filename Value="mdeditform.pas"/>
-        <Caret Line="96" TopLine="92"/>
+        <Filename Value="dbdriversqlite.pas"/>
+        <Caret Line="86" Column="9" TopLine="71"/>
       </Position27>
       <Position28>
-        <Filename Value="DbUnit.pas"/>
-        <Caret Line="64" Column="23" TopLine="60"/>
+        <Filename Value="dbdriversqlite.pas"/>
+        <Caret Line="213" Column="27" TopLine="198"/>
       </Position28>
       <Position29>
-        <Filename Value="DbUnit.pas"/>
-        <Caret Line="231" Column="11" TopLine="210"/>
+        <Filename Value="dbdriversqlite.pas"/>
+        <Caret Line="289" Column="19" TopLine="274"/>
       </Position29>
       <Position30>
         <Filename Value="dbdriversqlite.pas"/>
-        <Caret Line="96" Column="3" TopLine="94"/>
+        <Caret Line="213" Column="27" TopLine="198"/>
       </Position30>
     </JumpHistory>
   </ProjectSession>

@@ -14,7 +14,7 @@ type
   TDbTableInfo = class;
 
   { TDbFieldInfo }
-  TDbFieldInfo = class(TInterfacedObject)
+  TDbFieldInfo = class(TObject)
   public
     // Name
     FieldName: string;
@@ -33,7 +33,7 @@ type
   // Информация о таблице БД
   // - сведения о колонках и типах данных в колонках
   // - название таблицы
-  TDbTableInfo = class(TInterfacedObject)
+  TDbTableInfo = class(TObject)
   private
     FFields: TObjectList;
     function GetField(Index: Integer): TDbFieldInfo;

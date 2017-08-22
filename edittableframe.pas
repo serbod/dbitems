@@ -47,7 +47,7 @@ end;
 
 procedure TFrameEditTable.SetDbTableInfo(AValue: TDbTableInfo);
 begin
-  FDbTableInfo:=AValue;
+  FDbTableInfo := AValue;
   ReadItem();
 end;
 
@@ -56,40 +56,43 @@ var
   i: Integer;
   TmpField: TDbFieldInfo;
 begin
-  if not Assigned(DbTableInfo) then Exit;
+  if not Assigned(DbTableInfo) then
+    Exit;
 
-  Self.Visible:=False;
-  edTableName.Text:=DbTableInfo.TableName;
-  edTableDesc.Text:=DbTableInfo.TableDescription;
+  Self.Visible := False;
+  edTableName.Text := DbTableInfo.TableName;
+  edTableDesc.Text := DbTableInfo.TableDescription;
 
-  lbKeyFieldName.Enabled:=False;
-  cbKeyFieldName.Enabled:=False;
-  cbKeyFieldName.Text:='';
+  lbKeyFieldName.Enabled := False;
+  cbKeyFieldName.Enabled := False;
+  cbKeyFieldName.Text := '';
 
   // fill key fields list
-  for i:=0 to DbTableInfo.FieldsCount-1 do
+  for i := 0 to DbTableInfo.FieldsCount - 1 do
   begin
-    TmpField:=DbTableInfo.Fields[i];
-    if TmpField.FieldType='I' then
+    TmpField := DbTableInfo.Fields[i];
+    if TmpField.FieldType = 'I' then
     begin
       cbKeyFieldName.AddItem(TmpField.FieldName, TmpField);
     end;
   end;
 
-  Self.Visible:=True;
+  Self.Visible := True;
 end;
 
 procedure TFrameEditTable.WriteItem();
 begin
-  if not Assigned(DbTableInfo) then Exit;
-  if Trim(edTableName.Text)='' then Exit;
+  if not Assigned(DbTableInfo) then
+    Exit;
+  if Trim(edTableName.Text) = '' then
+    Exit;
 
-  DbTableInfo.TableName:=Trim(edTableName.Text);
-  DbTableInfo.TableDescription:=Trim(edTableDesc.Text);
-  DbTableInfo.KeyFieldName:=Trim(cbKeyFieldName.Text);
+  DbTableInfo.TableName := Trim(edTableName.Text);
+  DbTableInfo.TableDescription := Trim(edTableDesc.Text);
+  DbTableInfo.KeyFieldName := Trim(cbKeyFieldName.Text);
 
-  if Assigned(OnItemRename) then OnItemRename(Self);
+  if Assigned(OnItemRename) then
+    OnItemRename(Self);
 end;
 
 end.
-

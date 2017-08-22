@@ -16,12 +16,12 @@ type
     DbTableInfoList: TStringList;
     Filename: string;
     procedure SaveToFile();
-    function LoadFromFile(): boolean;
+    function LoadFromFile(): Boolean;
     procedure AfterConstruction(); override;
     procedure BeforeDestruction(); override;
     function DbTableInfoToStorage(ADbTableInfo: TDbTableInfo): TDataStorage;
     function DbTableInfoFromStorage(ADbTableInfo: TDbTableInfo;
-      AStorage: IDataStorage): boolean;
+      AStorage: IDataStorage): Boolean;
   end;
 
 implementation
@@ -31,7 +31,7 @@ implementation
 procedure TMdStorage.SaveToFile();
 var
   Storage, SubStorage, ItemStorage: IDataStorage;
-  i: integer;
+  i: Integer;
   Serializer: TDataSerializer;
 begin
   if Filename = '' then
@@ -55,11 +55,11 @@ begin
 
 end;
 
-function TMdStorage.LoadFromFile(): boolean;
+function TMdStorage.LoadFromFile(): Boolean;
 var
   Storage: IDataStorage;
   SubStorage, ItemStorage: IDataStorage;
-  i: integer;
+  i: Integer;
   Serializer: TDataSerializer;
   DbTableInfo: TDbTableInfo;
 begin
@@ -109,7 +109,7 @@ end;
 function TMdStorage.DbTableInfoToStorage(ADbTableInfo: TDbTableInfo): TDataStorage;
 var
   Storage, SubStorage: TDataStorage;
-  i: integer;
+  i: Integer;
   TmpField: TDbFieldInfo;
 begin
   Result := TDataStorage.Create(stDictionary);
@@ -138,12 +138,12 @@ begin
 end;
 
 function TMdStorage.DbTableInfoFromStorage(ADbTableInfo: TDbTableInfo;
-  AStorage: IDataStorage): boolean;
+  AStorage: IDataStorage): Boolean;
 var
   SubStorage: IDataStorage;
   SubStorageItem: IDataStorage;
   DbField: TDbFieldInfo;
-  i: integer;
+  i: Integer;
 begin
   Result := False;
   if not Assigned(AStorage) then
