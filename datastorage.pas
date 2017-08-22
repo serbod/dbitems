@@ -16,7 +16,7 @@ type
   IDataStorage = interface
     { Items count for (List, Dictionary) types }
     function GetCount(): integer;
-    procedure SetStorageType(const AValue: TDataStorageType);
+    //procedure SetStorageType(const AValue: TDataStorageType);
     function GetStorageType(): TDataStorageType;
     { Set value, if storage type is Dictionary, then AName used }
     procedure SetValue(AValue: IDataStorage; const AName: string = ''); overload;
@@ -64,7 +64,7 @@ type
     procedure BeforeDestruction(); override;
     { Items count for (List, Dictionary) types }
     function GetCount(): integer;
-    procedure SetStorageType(const AValue: TDataStorageType);
+    //procedure SetStorageType(const AValue: TDataStorageType);
     function GetStorageType(): TDataStorageType;
     { Set value, if storage type is Dictionary, then AName used
       for (List) is add value}
@@ -91,7 +91,7 @@ type
     procedure Clear();
     property Count: Integer read GetCount;
     { stUnknown, stString, stInteger, stNumber, stList, stDictionary }
-    property StorageType: TDataStorageType read GetStorageType write SetStorageType;
+    property StorageType: TDataStorageType read GetStorageType;
     { Value for (String, Integer, Number) types }
     property Value: AnsiString read FGetValue write FSetValue;
   end;
@@ -105,11 +105,11 @@ type
     // Serialize storage to string
     function StorageToString(AStorage: IDataStorage): AnsiString; virtual;
     // De-serialize string into AStorage (not nil)
-    function StorageFromString(AStorage: IDataStorage; const AString: AnsiString): Boolean; virtual;
+    function StorageFromString(const AString: AnsiString): IDataStorage; virtual;
     // Save storage to file. Filename must be without extension
     function StorageToFile(AStorage: IDataStorage; AFileName: string): Boolean; virtual;
     // Fill AStorage (not nil) from file. Filename must be without extension
-    function StorageFromFile(AStorage: IDataStorage; AFileName: string): Boolean; virtual;
+    function StorageFromFile(AFileName: string): IDataStorage; virtual;
   end;
 
   { TDataSerializerBencode }
@@ -127,17 +127,17 @@ type
   TDataSerializerBencode = class(TDataSerializer)
   private
     function StorageToBencode(AStorage: IDataStorage): AnsiString;
-    function ReadBencodeValue(AStorage: IDataStorage; const AString: AnsiString; var APos: Cardinal; ALen: Cardinal): Boolean;
+    function ReadBencodeValue(const AString: AnsiString; var APos: Cardinal; ALen: Cardinal): IDataStorage;
     function ReadBencodeIntegerStr(const AString: AnsiString; var APos: Cardinal; ALen: Cardinal): AnsiString;
     function ReadBencodeString(const AString: AnsiString; var APos: Cardinal; ALen: Cardinal): AnsiString;
-    function ReadBencodeList(AStorage: IDataStorage; const AString: AnsiString; var APos: Cardinal; ALen: Cardinal): Boolean;
-    function ReadBencodeDictionary(AStorage: IDataStorage; const AString: AnsiString; var APos: Cardinal; ALen: Cardinal): Boolean;
+    function ReadBencodeList(const AString: AnsiString; var APos: Cardinal; ALen: Cardinal): IDataStorage;
+    function ReadBencodeDictionary(const AString: AnsiString; var APos: Cardinal; ALen: Cardinal): IDataStorage;
   public
     function GetName(): string; override;
     function StorageToString(AStorage: IDataStorage): AnsiString; override;
-    function StorageFromString(AStorage: IDataStorage; const AString: AnsiString): Boolean; override;
+    function StorageFromString(const AString: AnsiString): IDataStorage; override;
     function StorageToFile(AStorage: IDataStorage; AFileName: string): Boolean; override;
-    function StorageFromFile(AStorage: IDataStorage; AFileName: string): Boolean; override;
+    function StorageFromFile(AFileName: string): IDataStorage; override;
   end;
 
 
@@ -352,10 +352,10 @@ begin
   Result := FStorageType;
 end;
 
-procedure TDataStorage.SetStorageType(const AValue: TDataStorageType);
+{procedure TDataStorage.SetStorageType(const AValue: TDataStorageType);
 begin
   FStorageType := AValue;
-end;
+end;}
 
 function TDataStorage.FGetValue: AnsiString;
 begin
@@ -449,9 +449,10 @@ begin
   Result := '';
 end;
 
-function TDataSerializer.StorageFromString(AStorage: IDataStorage; const AString: AnsiString): Boolean;
+function TDataSerializer.StorageFromString(const AString: AnsiString
+  ): IDataStorage;
 begin
-  Result := False;
+  Result := nil;
 end;
 
 function TDataSerializer.StorageToFile(AStorage: IDataStorage; AFileName: string): Boolean;
@@ -459,9 +460,9 @@ begin
   Result := False;
 end;
 
-function TDataSerializer.StorageFromFile(AStorage: IDataStorage; AFileName: string): Boolean;
+function TDataSerializer.StorageFromFile(AFileName: string): IDataStorage;
 begin
-  Result := False;
+  Result := nil;
 end;
 
 { TDataSerializerBencode }
@@ -566,91 +567,89 @@ begin
   end;
 end;
 
-function TDataSerializerBencode.ReadBencodeDictionary(AStorage: IDataStorage; const AString: AnsiString; var APos: Cardinal; ALen: Cardinal): Boolean;
+function TDataSerializerBencode.ReadBencodeDictionary(const AString: AnsiString; var APos: Cardinal; ALen: Cardinal): IDataStorage;
 var
   sName: AnsiString;
   SubStorage: IDataStorage;
 begin
-  Result := False;
+  Result := nil;
   if AString[APos] = 'd' then
     Inc(APos)
   else
     Exit;
-  AStorage.SetStorageType(stDictionary);
+
+  Result := TDataStorage.Create(stDictionary);
   while APos <= ALen do
   begin
     if AString[APos] = 'e' then
     begin
       Inc(APos);
-      Result := True;
       Exit;
     end;
     sName := ReadBencodeString(AString, APos, ALen);
-    SubStorage := TDataStorage.Create(stUnknown);
-    if ReadBencodeValue(SubStorage, AString, APos, ALen) then
-      AStorage.SetValue(SubStorage, sName);
+    SubStorage := ReadBencodeValue(AString, APos, ALen);
+    if Assigned(SubStorage) then
+      Result.SetValue(SubStorage, sName);
   end;
+  Result := nil;
 end;
 
-function TDataSerializerBencode.ReadBencodeList(AStorage: IDataStorage; const AString: AnsiString; var APos: Cardinal; ALen: Cardinal): Boolean;
+function TDataSerializerBencode.ReadBencodeList(const AString: AnsiString;
+  var APos: Cardinal; ALen: Cardinal): IDataStorage;
 var
   SubStorage: IDataStorage;
 begin
-  Result := False;
+  Result := nil;
   if AString[APos] = 'l' then
     Inc(APos)
   else
     Exit;
-  AStorage.SetStorageType(stList);
+
+  Result := TDataStorage.Create(stList);
   while APos <= ALen do
   begin
     if AString[APos] = 'e' then
     begin
       Inc(APos);
-      Result := True;
       Exit;
     end;
-    SubStorage := TDataStorage.Create(stUnknown);
-    if ReadBencodeValue(SubStorage, AString, APos, ALen) then
-      AStorage.SetValue(SubStorage);
+    SubStorage := ReadBencodeValue(AString, APos, ALen);
+    if Assigned(SubStorage) then
+      Result.SetValue(SubStorage);
   end;
+  Result := nil;
 end;
 
-function TDataSerializerBencode.ReadBencodeValue(AStorage: IDataStorage; const AString: AnsiString; var APos: Cardinal; ALen: Cardinal): Boolean;
+function TDataSerializerBencode.ReadBencodeValue(const AString: AnsiString;
+  var APos: Cardinal; ALen: Cardinal): IDataStorage;
 begin
-  Result := False;
-  if not Assigned(AStorage) then
-    Exit;
+  Result := nil;
   if APos <= ALen then
   begin
     if AString[APos] = 'i' then
     begin
       // read integer value
-      AStorage.SetStorageType(stInteger);
-      AStorage.SetValue(ReadBencodeIntegerStr(AString, APos, ALen));
-      Result := True;
+      Result := TDataStorage.Create(stInteger);
+      Result.SetValue(ReadBencodeIntegerStr(AString, APos, ALen));
     end
 
     else if Pos(AString[APos], '0123456789') > 0 then
     begin
       // read string value
-      AStorage.SetStorageType(stString);
-      AStorage.SetValue(ReadBencodeString(AString, APos, ALen));
-      Result := True;
+      Result := TDataStorage.Create(stString);
+      Result.SetValue(ReadBencodeString(AString, APos, ALen));
     end
 
     else if AString[APos] = 'd' then
     begin
       // read dictionary value
-      ReadBencodeDictionary(AStorage, AString, APos, ALen);
-      Result := True;
+      Result := ReadBencodeDictionary(AString, APos, ALen);
     end
 
     else if AString[APos] = 'l' then
     begin
       // read list value
-      ReadBencodeList(AStorage, AString, APos, ALen);
-      Result := True;
+      Result := ReadBencodeList(AString, APos, ALen);
     end
 
     else
@@ -666,12 +665,12 @@ begin
   Result := StorageToBencode(AStorage);
 end;
 
-function TDataSerializerBencode.StorageFromString(AStorage: IDataStorage; const AString: AnsiString): Boolean;
+function TDataSerializerBencode.StorageFromString(const AString: AnsiString): IDataStorage;
 var
   n: Cardinal;
 begin
   n := 1;
-  Result := ReadBencodeValue(AStorage, AString, n, Length(AString));
+  Result := ReadBencodeValue(AString, n, Length(AString));
 end;
 
 function TDataSerializerBencode.StorageToFile(AStorage: IDataStorage; AFileName: string): Boolean;
@@ -684,14 +683,14 @@ begin
   Result := StrToFile(AFileName, Self.StorageToString(AStorage));
 end;
 
-function TDataSerializerBencode.StorageFromFile(AStorage: IDataStorage; AFileName: string): Boolean;
+function TDataSerializerBencode.StorageFromFile(AFileName: string): IDataStorage;
 begin
-  Result := False;
+  Result := nil;
   if Trim(AFileName) = '' then
     Exit;
   if Pos('.be', AFileName) < (Length(AFileName) - 2) then
     AFileName := AFileName + '.be';
-  Result := Self.StorageFromString(AStorage, FileToStr(AFileName));
+  Result := Self.StorageFromString(FileToStr(AFileName));
 end;
 
 initialization

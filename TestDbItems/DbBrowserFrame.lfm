@@ -1,0 +1,84 @@
+object FrameDbBrowser: TFrameDbBrowser
+  Left = 0
+  Height = 376
+  Top = 0
+  Width = 577
+  ClientHeight = 376
+  ClientWidth = 577
+  TabOrder = 0
+  DesignLeft = 267
+  DesignTop = 216
+  object toolbarDbBrowser: TToolBar
+    Left = 0
+    Height = 376
+    Top = 0
+    Width = 33
+    Align = alLeft
+    ButtonHeight = 30
+    ButtonWidth = 31
+    Caption = 'toolbarDbBrowser'
+    Flat = False
+    TabOrder = 0
+    object btnRefresh: TToolButton
+      Left = 1
+      Top = 2
+      Caption = 'btnRefresh'
+      ImageIndex = 29
+      OnClick = ToolButtonClick
+      Wrap = True
+    end
+    object btnEditTable: TToolButton
+      Left = 1
+      Top = 32
+      Caption = 'btnEditTable'
+      ImageIndex = 11
+      OnClick = ToolButtonClick
+    end
+  end
+  object panCenter: TPanel
+    Left = 33
+    Height = 376
+    Top = 0
+    Width = 544
+    Align = alClient
+    BevelOuter = bvNone
+    ClientHeight = 376
+    ClientWidth = 544
+    TabOrder = 1
+    object splH1: TSplitter
+      Cursor = crVSplit
+      Left = 0
+      Height = 3
+      Top = 145
+      Width = 544
+      Align = alTop
+      ResizeAnchor = akTop
+    end
+    object tvDbTree: TTreeView
+      Left = 0
+      Height = 145
+      Top = 0
+      Width = 544
+      Align = alTop
+      HotTrack = True
+      Indent = 19
+      ReadOnly = True
+      TabOrder = 0
+      OnChange = tvDbTreeChange
+      Options = [tvoAutoItemHeight, tvoHideSelection, tvoHotTrack, tvoKeepCollapsedNodes, tvoReadOnly, tvoShowButtons, tvoShowLines, tvoShowRoot, tvoToolTips, tvoThemedDraw]
+    end
+    object lvDbTable: TListView
+      Left = 0
+      Height = 228
+      Top = 148
+      Width = 544
+      Align = alClient
+      Columns = <>
+      GridLines = True
+      ReadOnly = True
+      RowSelect = True
+      TabOrder = 1
+      ViewStyle = vsReport
+    end
+  end
+end

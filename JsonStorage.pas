@@ -29,17 +29,17 @@ type
   private
     procedure WriteStorage(AStorage: IDataStorage; var AOutStr: AnsiString);
     procedure WriteJsonString(const AInStr: AnsiString; var AOutStr: AnsiString);
-    function ReadJsonValue(AStorage: IDataStorage; const AString: AnsiString; var APos: Cardinal; ALen: Cardinal): Boolean;
+    function ReadJsonValue(const AString: AnsiString; var APos: Cardinal; ALen: Cardinal): IDataStorage;
     function ReadJsonString(const AString: AnsiString; var APos: Cardinal; ALen: Cardinal): AnsiString;
-    function ReadJsonList(AStorage: IDataStorage; const AString: AnsiString; var APos: Cardinal; ALen: Cardinal): Boolean;
-    function ReadJsonDictionary(AStorage: IDataStorage; const AString: AnsiString; var APos: Cardinal; ALen: Cardinal): Boolean;
-    function ReadJsonNumber(AStorage: IDataStorage; const AString: AnsiString; var APos: Cardinal; ALen: Cardinal): Boolean;
+    function ReadJsonList(const AString: AnsiString; var APos: Cardinal; ALen: Cardinal): IDataStorage;
+    function ReadJsonDictionary(const AString: AnsiString; var APos: Cardinal; ALen: Cardinal): IDataStorage;
+    function ReadJsonNumber(const AString: AnsiString; var APos: Cardinal; ALen: Cardinal): IDataStorage;
   public
     function GetName(): string; override;
     function StorageToString(AStorage: IDataStorage): AnsiString; override;
-    function StorageFromString(AStorage: IDataStorage; const AString: AnsiString): Boolean; override;
+    function StorageFromString(const AString: AnsiString): IDataStorage; override;
     function StorageToFile(AStorage: IDataStorage; AFileName: string): Boolean; override;
-    function StorageFromFile(AStorage: IDataStorage; AFileName: string): Boolean; override;
+    function StorageFromFile(AFileName: string): IDataStorage; override;
   end;
 
 implementation
@@ -53,21 +53,21 @@ begin
   Result := 'JSON';
 end;
 
-function TDataSerializerJson.ReadJsonDictionary(AStorage: IDataStorage;
-  const AString: AnsiString; var APos: Cardinal; ALen: Cardinal): Boolean;
+function TDataSerializerJson.ReadJsonDictionary(const AString: AnsiString;
+  var APos: Cardinal; ALen: Cardinal): IDataStorage;
 var
   sName: AnsiString;
   bNamePart: Boolean;
   bValueReaded: Boolean;
   SubStorage: IDataStorage;
 begin
-  Result := False;
+  Result := nil;
   if AString[APos] = '{' then
     Inc(APos)
   else
     Exit;
 
-  AStorage.SetStorageType(stDictionary);
+  Result := TDataStorage.Create(stDictionary);
   bNamePart := True;
   sName := '';
   bValueReaded := False;
@@ -78,7 +78,6 @@ begin
       begin
         // end of dictionary
         Inc(APos);
-        Result := True;
         Exit;
       end;
 
@@ -97,9 +96,9 @@ begin
         else
         if (not bValueReaded) then
         begin
-          SubStorage := TDataStorage.Create(stUnknown);
-          if ReadJsonValue(SubStorage, AString, APos, ALen) then
-            AStorage.SetValue(SubStorage, sName);
+          SubStorage := ReadJsonValue(AString, APos, ALen);
+          if Assigned(SubStorage) then
+            Result.SetValue(SubStorage, sName);
           bValueReaded := True;
         end
         else
@@ -118,30 +117,31 @@ begin
       if (not bNamePart) and (not bValueReaded) and (Pos(AString[APos], '{[0123456789+-.eE"') > 0) then
       begin
         // value
-        SubStorage := TDataStorage.Create(stUnknown);
-        if ReadJsonValue(SubStorage, AString, APos, ALen) then
-          AStorage.SetValue(SubStorage, sName);
+        SubStorage := ReadJsonValue(AString, APos, ALen);
+        if Assigned(SubStorage) then
+          Result.SetValue(SubStorage, sName);
         bValueReaded := True;
       end
       else
         Inc(APos);
     end;
   end;
+  Result := nil;
 end;
 
-function TDataSerializerJson.ReadJsonList(AStorage: IDataStorage;
-  const AString: AnsiString; var APos: Cardinal; ALen: Cardinal): Boolean;
+function TDataSerializerJson.ReadJsonList(const AString: AnsiString;
+  var APos: Cardinal; ALen: Cardinal): IDataStorage;
 var
   bValueReaded: Boolean;
   SubStorage: IDataStorage;
 begin
-  Result := False;
+  Result := nil;
   if AString[APos] = '[' then
     Inc(APos)
   else
     Exit;
 
-  AStorage.SetStorageType(stList);
+  Result := TDataStorage.Create(stList);
   bValueReaded := False;
   while APos <= ALen do
   begin
@@ -150,7 +150,6 @@ begin
       begin
         // end of list
         Inc(APos);
-        Result := True;
         Exit;
       end;
 
@@ -164,21 +163,22 @@ begin
       if (not bValueReaded) and (Pos(AString[APos], '{[0123456789+-.eE"') > 0) then
       begin
         // value
-        SubStorage := TDataStorage.Create(stUnknown);
-        if ReadJsonValue(SubStorage, AString, APos, ALen) then
-          AStorage.SetValue(SubStorage);
+        SubStorage := ReadJsonValue(AString, APos, ALen);
+        if Assigned(SubStorage) then
+          Result.SetValue(SubStorage);
         bValueReaded := True;
       end
       else
         Inc(APos);
     end;
   end;
+  Result := nil;
 end;
 
-function TDataSerializerJson.ReadJsonNumber(AStorage: IDataStorage;
-  const AString: AnsiString; var APos: Cardinal; ALen: Cardinal): Boolean;
+function TDataSerializerJson.ReadJsonNumber(const AString: AnsiString;
+  var APos: Cardinal; ALen: Cardinal): IDataStorage;
 var
-  s: ShortString;
+  s: AnsiString;
 begin
   s := '';
   while (APos <= ALen)
@@ -189,12 +189,11 @@ begin
   end;
 
   if Pos('.', s) > 0 then
-    AStorage.SetStorageType(stNumber)
+    Result := TDataStorage.Create(stNumber)
   else
-    AStorage.SetStorageType(stInteger);
+    Result := TDataStorage.Create(stInteger);
 
-  AStorage.SetValue(s);
-  Result := True;
+  Result.SetValue(s);
 end;
 
 function TDataSerializerJson.ReadJsonString(const AString: AnsiString;
@@ -306,36 +305,33 @@ begin
   Result := Result + TmpStr;
 end;
 
-function TDataSerializerJson.ReadJsonValue(AStorage: IDataStorage;
-  const AString: AnsiString; var APos: Cardinal; ALen: Cardinal): Boolean;
+function TDataSerializerJson.ReadJsonValue(const AString: AnsiString;
+  var APos: Cardinal; ALen: Cardinal): IDataStorage;
 var
   c: AnsiChar;
 begin
-  Result := False;
-  if not Assigned(AStorage) then
-    Exit;
-  while (not Result) and (APos <= ALen) do
+  Result := nil;
+  while (not Assigned(Result)) and (APos <= ALen) do
   begin
     c := AString[APos];
     case c of
       '"':
       begin
         // read string value
-        AStorage.SetStorageType(stString);
-        AStorage.SetValue(ReadJsonString(AString, APos, ALen));
-        Result := True;
+        Result := TDataStorage.Create(stString);
+        Result.SetValue(ReadJsonString(AString, APos, ALen));
       end;
 
       '[':
       begin
         // read list value
-        Result := ReadJsonList(AStorage, AString, APos, ALen);
+        Result := ReadJsonList(AString, APos, ALen);
       end;
 
       '{':
       begin
         // read dictionary value
-        Result := ReadJsonDictionary(AStorage, AString, APos, ALen);
+        Result := ReadJsonDictionary(AString, APos, ALen);
       end;
 
       't':
@@ -344,9 +340,8 @@ begin
         if Copy(AString, APos, 4) = 'true' then
         begin
           Inc(APos, 3);
-          AStorage.SetStorageType(stInteger);
-          AStorage.SetValue('1');
-          Result := True;
+          Result := TDataStorage.Create(stInteger);
+          Result.SetValue('1');
         end;
       end;
 
@@ -356,9 +351,8 @@ begin
         if Copy(AString, APos, 5) = 'false' then
         begin
           Inc(APos, 4);
-          AStorage.SetStorageType(stInteger);
-          AStorage.SetValue('0');
-          Result := True;
+          Result := TDataStorage.Create(stInteger);
+          Result.SetValue('0');
         end;
       end;
 
@@ -368,9 +362,8 @@ begin
         if Copy(AString, APos, 4) = 'null' then
         begin
           Inc(APos, 3);
-          AStorage.SetStorageType(stUnknown);
-          AStorage.SetValue('');
-          Result := True;
+          Result := TDataStorage.Create(stUnknown);
+          Result.SetValue('');
         end;
       end;
 
@@ -378,33 +371,32 @@ begin
       if Pos(c, '+-0123456789.eE') > 0 then
       begin
         // read number value
-        Result := ReadJsonNumber(AStorage, AString, APos, ALen);
+        Result := ReadJsonNumber(AString, APos, ALen);
       end
     end;
 
-    if not Result then
+    if not Assigned(Result) then
       Inc(APos);
   end;
 end;
 
-function TDataSerializerJson.StorageFromFile(AStorage: IDataStorage;
-  AFileName: string): Boolean;
+function TDataSerializerJson.StorageFromFile(AFileName: string): IDataStorage;
 begin
-  Result := False;
+  Result := nil;
   if Trim(AFileName) = '' then
     Exit;
   if Pos('.json', AFileName) < (Length(AFileName) - 2) then
     AFileName := AFileName + '.json';
-  Result := Self.StorageFromString(AStorage, FileToStr(AFileName));
+  Result := Self.StorageFromString(FileToStr(AFileName));
 end;
 
-function TDataSerializerJson.StorageFromString(AStorage: IDataStorage;
-  const AString: AnsiString): Boolean;
+function TDataSerializerJson.StorageFromString(const AString: AnsiString
+  ): IDataStorage;
 var
   n: Cardinal;
 begin
   n := 1;
-  Result := ReadJsonValue(AStorage, AString, n, Length(AString));
+  Result := ReadJsonValue(AString, n, Length(AString));
 end;
 
 function TDataSerializerJson.StorageToFile(AStorage: IDataStorage;

@@ -1,0 +1,227 @@
+object FormDataModelsTest: TFormDataModelsTest
+  Left = 699
+  Height = 300
+  Top = 354
+  Width = 648
+  Caption = 'FormDataModelsTest'
+  ClientHeight = 300
+  ClientWidth = 648
+  OnCreate = FormCreate
+  LCLVersion = '1.9.0.0'
+  object gbStandard: TGroupBox
+    AnchorSideLeft.Control = Owner
+    AnchorSideTop.Control = Owner
+    AnchorSideBottom.Control = Owner
+    AnchorSideBottom.Side = asrBottom
+    Left = 4
+    Height = 292
+    Top = 4
+    Width = 313
+    Anchors = [akTop, akLeft, akBottom]
+    BorderSpacing.Around = 4
+    Caption = 'Standard controls'
+    ClientHeight = 272
+    ClientWidth = 309
+    TabOrder = 0
+    object Button1: TButton
+      Left = 15
+      Height = 25
+      Top = 236
+      Width = 75
+      Caption = 'Button1'
+      OnClick = Button1Click
+      TabOrder = 0
+    end
+    object ListView1: TListView
+      Left = 173
+      Height = 96
+      Top = 128
+      Width = 126
+      Columns = <      
+        item
+          Caption = 'Col1'
+          Width = 30
+        end      
+        item
+          Caption = 'Col2'
+        end      
+        item
+          Caption = 'Col3'
+        end>
+      GridLines = True
+      Items.LazData = {
+        6E00000002000000FFFFFFFFFFFFFFFFFFFFFFFF02000000050000004974656D
+        30050000004974656D32050000004974656D33FFFFFFFFFFFFFFFFFFFFFFFF02
+        000000050000004974656D31050000004974656D34050000004974656D35FFFF
+        FFFFFFFFFFFFFFFFFFFFFFFFFFFF
+      }
+      ReadOnly = True
+      RowSelect = True
+      TabOrder = 1
+      ViewStyle = vsReport
+    end
+    object Label1: TLabel
+      Left = 173
+      Height = 15
+      Top = 102
+      Width = 34
+      Caption = 'Label1'
+      ParentColor = False
+    end
+    object Memo1: TMemo
+      Left = 13
+      Height = 54
+      Top = 98
+      Width = 123
+      Lines.Strings = (
+        'Memo1'
+      )
+      TabOrder = 2
+    end
+    object ListBox1: TListBox
+      Left = 13
+      Height = 56
+      Top = 168
+      Width = 124
+      Items.Strings = (
+        'Item1'
+        'Item2'
+        'Item3'
+      )
+      ItemHeight = 15
+      TabOrder = 3
+    end
+    object Edit1: TEdit
+      Left = 13
+      Height = 23
+      Top = 12
+      Width = 123
+      TabOrder = 4
+      Text = 'Edit1'
+    end
+    object MaskEdit1: TMaskEdit
+      Left = 173
+      Height = 23
+      Top = 12
+      Width = 123
+      CharCase = ecNormal
+      MaxLength = 0
+      TabOrder = 5
+      Text = 'MaskEdit1'
+      SpaceChar = '_'
+    end
+    object LabeledEdit1: TLabeledEdit
+      Left = 13
+      Height = 23
+      Top = 64
+      Width = 123
+      EditLabel.AnchorSideLeft.Control = LabeledEdit1
+      EditLabel.AnchorSideRight.Control = LabeledEdit1
+      EditLabel.AnchorSideRight.Side = asrBottom
+      EditLabel.AnchorSideBottom.Control = LabeledEdit1
+      EditLabel.Left = 13
+      EditLabel.Height = 15
+      EditLabel.Top = 46
+      EditLabel.Width = 123
+      EditLabel.Caption = 'LabeledEdit1'
+      EditLabel.ParentColor = False
+      TabOrder = 6
+      Text = 'LabeledEdit1'
+    end
+    object StaticText1: TStaticText
+      Left = 173
+      Height = 22
+      Top = 64
+      Width = 123
+      BorderStyle = sbsSingle
+      Caption = 'StaticText1'
+      TabOrder = 7
+    end
+  end
+  object gbRTTI: TGroupBox
+    AnchorSideLeft.Control = gbStandard
+    AnchorSideLeft.Side = asrBottom
+    AnchorSideTop.Control = Owner
+    AnchorSideRight.Control = Owner
+    AnchorSideRight.Side = asrBottom
+    AnchorSideBottom.Control = Owner
+    AnchorSideBottom.Side = asrBottom
+    Left = 321
+    Height = 292
+    Top = 4
+    Width = 323
+    Anchors = [akTop, akLeft, akRight, akBottom]
+    BorderSpacing.Around = 4
+    Caption = 'RTTI controls'
+    ClientHeight = 272
+    ClientWidth = 319
+    TabOrder = 1
+    object TIEdit1: TTIEdit
+      Left = 16
+      Height = 23
+      Top = 12
+      Width = 123
+      TabOrder = 0
+    end
+    object TIMaskEdit1: TTIMaskEdit
+      Left = 168
+      Height = 23
+      Top = 12
+      Width = 123
+      CharCase = ecNormal
+      MaxLength = 0
+      TabOrder = 1
+    end
+    object TILabel1: TTILabel
+      Left = 168
+      Height = 15
+      Top = 102
+      Width = 44
+    end
+    object TIMemo1: TTIMemo
+      Left = 16
+      Height = 54
+      Top = 98
+      Width = 120
+      Lines.Strings = (
+        'TIMemo1'
+      )
+    end
+    object TIListBox1: TTIListBox
+      Left = 16
+      Height = 56
+      Top = 168
+      Width = 120
+      ItemHeight = 0
+      Link.TIObject = ListBox1
+      Link.TIPropertyName = 'Items'
+      TabOrder = 3
+    end
+    object TIGrid1: TTIGrid
+      Left = 168
+      Height = 96
+      Top = 128
+      Width = 123
+      AutoFillColumns = True
+      Color = clWindow
+      Filter = [tkInteger, tkChar, tkEnumeration, tkFloat, tkSString, tkLString, tkAString, tkWString, tkVariant, tkWChar, tkBool, tkInt64, tkQWord]
+      ParentColor = False
+      TabOrder = 4
+      TIOptions = []
+      ColWidths = (
+        64
+        9
+        9
+        9
+        11
+      )
+    end
+    object TISpinEdit1: TTISpinEdit
+      Left = 16
+      Height = 23
+      Top = 64
+      Width = 123
+      TabOrder = 5
+    end
+  end
+end

@@ -52,7 +52,7 @@ type
     // Список полей таблицы
     property Fields[Index: Integer]: TDbFieldInfo read GetField;
     // Список имен полей таблицы
-    property Names[Index: Integer]: string read GetFieldName;
+    property FieldNames[Index: Integer]: string read GetFieldName;
     // Список типов полей таблицы
     property Types[Index: Integer]: string read GetFieldType;
     // Количество полей
@@ -65,6 +65,15 @@ type
     procedure DeleteField(const FieldName: string);
     // Возвращает номер поля по его имени
     function FieldIndex(AName: string): Integer;
+  end;
+
+  { TDbTableInfoList }
+
+  TDbTableInfoList = class(TList)
+  protected
+    procedure Notify(Ptr: Pointer; Action: TListNotification); override;
+  public
+    function GetItem(Index: Integer): TDbTableInfo;
   end;
 
   // элемент таблицы БД, один ряд таблицы
@@ -125,11 +134,11 @@ type
   // Проще говоря - таблица
   TDbItemList = class(TObjectList)
   protected
-    ALastID: Integer;
+    FLastID: Integer;
+    FDbDriver: TDbDriver;
+    FDbTableInfo: TDbTableInfo;
   public
-    DbDriver: TDbDriver;
-    DbTableInfo: TDbTableInfo;
-    constructor Create(ADbTableInfo: TDbTableInfo); virtual;
+    constructor Create(ADbTableInfo: TDbTableInfo; ADbDriver: TDbDriver); reintroduce;
     function AddItem(AItem: TDbItem; SetNewID: Boolean = False): Integer;
     function GetItemByID(ItemID: Integer): TDbItem;
     function GetItemByName(ItemName: string; Wildcard: Boolean = False): TDbItem;
@@ -138,17 +147,19 @@ type
     function NewItem(): TDbItem; virtual;
     procedure LoadLocal();
     procedure SaveLocal();
+
+    property DbTableInfo: TDbTableInfo read FDbTableInfo;
+    property DbDriver: TDbDriver read FDbDriver;
   end;
 
   // Драйвер базы данных - для доступа к хранилищу данных
   // Это базовый класс, должен быть переопределено для конкретных видов БД
-  TDbDriver = class(TInterfacedObject)
+  TDbDriver = class(TObject)
   private
     FOnDebugSQL: TGetStrProc;
+    FTablesList: TDbTableInfoList;
   public
     DbName: string;
-    // Список описаний таблиц TDbTableInfo
-    TablesList: TObjectList;
     constructor Create();
     destructor Destroy(); override;
     // Открывает указанную базу данных
@@ -162,12 +173,14 @@ type
     function GetTable(AItemList: TDbItemList; Filter: string = ''): Boolean;
       virtual; abstract;
     // Заполняет базу данных элементами из указанной таблицы, по заданному фильтру
-    function SetTable(AItemList: TDbItemList; Filter: string = ''): Boolean;
-      virtual; abstract;
+    function SetTable(AItemList: TDbItemList; Filter: string = ''): Boolean; virtual; abstract;
     // Возвращает DBItem по значению вида Table_name~id
     // Должно быть переопределено в потомках
     function GetDBItem(FValue: string): TDBItem; virtual; abstract;
     function SetDBItem(FItem: TDBItem): Boolean; virtual; abstract;
+
+    // Список описаний таблиц TDbTableInfo
+    property TablesList: TDbTableInfoList read FTablesList;
     // Triggers before SQL statement executed, return SQL text
     property OnDebugSQL: TGetStrProc read FOnDebugSQL write FOnDebugSQL;
   end;
@@ -181,11 +194,30 @@ type
     function Close(): Boolean; override;
     function GetTable(AItemList: TDbItemList; Filter: string = ''): Boolean; override;
     function SetTable(AItemList: TDbItemList; Filter: string = ''): Boolean; override;
-    function GetDBItem(FValue: string): TDBItem; override;
-    function SetDBItem(FItem: TDBItem): Boolean; override;
+    function GetDBItem(AValue: string): TDBItem; override;
+    function SetDBItem(AItem: TDBItem): Boolean; override;
   end;
 
+var
+  GlobalDbDriver: TDbDriver;
+
 implementation
+
+{ TDbTableInfoList }
+
+procedure TDbTableInfoList.Notify(Ptr: Pointer; Action: TListNotification);
+begin
+  inherited Notify(Ptr, Action);
+  if (Action = lnDeleted) then
+  begin
+    TDbTableInfo(Ptr).Free();
+  end;
+end;
+
+function TDbTableInfoList.GetItem(Index: Integer): TDbTableInfo;
+begin
+  Result := TDbTableInfo(inherited Get(Index));
+end;
 
 // === TDbTableInfo ===
 function TDbTableInfo.GetField(Index: Integer): TDbFieldInfo;
@@ -396,10 +428,11 @@ begin
 end;
 
 // === TDbItemList ===
-constructor TDbItemList.Create(ADbTableInfo: TDbTableInfo);
+constructor TDbItemList.Create(ADbTableInfo: TDbTableInfo; ADbDriver: TDbDriver);
 begin
-  Self.DbDriver := nil;
-  Self.DbTableInfo := ADbTableInfo;
+  inherited Create(True);
+  FDbTableInfo := ADbTableInfo;
+  FDbDriver := ADbDriver;
 end;
 
 procedure TDbItemList.LoadLocal();
@@ -418,15 +451,15 @@ function TDbItemList.AddItem(AItem: TDbItem; SetNewID: Boolean = False): Integer
 begin
   if SetNewID then
   begin
-    Inc(self.ALastID);
-    AItem.SetID(self.ALastID);
+    Inc(self.FLastID);
+    AItem.SetID(self.FLastID);
   end
   else
   begin
-    if self.ALastID < AItem.GetID then
-      self.ALastID := AItem.GetID;
+    if self.FLastID < AItem.GetID then
+      self.FLastID := AItem.GetID;
   end;
-  AItem.DbTableInfo := self.DbTableInfo;
+  AItem.DbTableInfo := FDbTableInfo;
   Result := self.Add(AItem);
 end;
 
@@ -505,13 +538,15 @@ end;
 // === TDbDriver ===
 constructor TDbDriver.Create();
 begin
-  self.TablesList := TObjectList.Create(False);
+  inherited;
+  FTablesList := TDbTableInfoList.Create();
 end;
 
 destructor TDbDriver.Destroy();
 begin
   self.Close();
-  self.TablesList.Free();
+  FreeAndNil(FTablesList);
+  inherited;
 end;
 
 function TDbDriver.GetDbTableInfo(TableName: string): TDbTableInfo;
@@ -519,21 +554,20 @@ var
   i: Integer;
 begin
   Result := nil;
-  for i := 0 to Self.TablesList.Count - 1 do
+  for i := 0 to FTablesList.Count - 1 do
   begin
-    if (Self.TablesList[i] as TDbTableInfo).TableName = TableName then
-    begin
-      Result := (Self.TablesList[i] as TDbTableInfo);
+    Result := FTablesList.GetItem(i);
+    if Result.TableName = TableName then
       Exit;
-    end;
   end;
+  Result := nil;
 end;
 
 // === TDbDriverCSV ===
 function TDbDriverCSV.Open(ADbName: string): Boolean;
 begin
-  self.DbName := ADbName;
-  self.dbPath := ExtractFileDir(ParamStr(0)) + '\Data\';
+  self.DbName := ExtractFileName(ADbName);
+  self.dbPath := ExtractFileDir(ADbName);
   Result := True;
 end;
 
@@ -546,11 +580,11 @@ procedure TDbDriverCSV.CheckTable(TableInfo: TDbTableInfo);
 begin
   if TableInfo.Valid then
     Exit;
-  if Self.TablesList.IndexOf(TableInfo) >= 0 then
+  if FTablesList.IndexOf(TableInfo) >= 0 then
     Exit;
 
   TableInfo.Valid := True;
-  Self.TablesList.Add(TableInfo);
+  FTablesList.Add(TableInfo);
 end;
 
 function TDbDriverCSV.GetTable(AItemList: TDbItemList; Filter: string = ''): Boolean;
@@ -565,69 +599,73 @@ begin
   if not Assigned(AItemList) then
     Exit;
   CheckTable(AItemList.DbTableInfo);
-  fn := self.dbPath + '\' + AItemList.DbTableInfo.TableName + '.lst';
+  fn := '';
+  if self.dbPath <> '' then
+    fn := IncludeTrailingPathDelimiter(self.dbPath);
+  fn := fn + AItemList.DbTableInfo.TableName + '.lst';
   if not FileExists(fn) then
     Exit;
-  sl := TStringList.Create();
-  try
-    sl.LoadFromFile(fn);
-  except
-    sl.Free();
-    Exit;
-  end;
 
+  sl := TStringList.Create();
   vl := TStringList.Create(); // row values
   fl := TStringList.Create(); // filters
-  fl.CommaText := Filter;
+  try
+    sl.LoadFromFile(fn);
+    fl.CommaText := Filter;
 
-  // первая строка - список колонок!
-  for i := 1 to sl.Count - 1 do
-  begin
-    vl.Clear();
-    vl.CommaText := StringReplace(sl[i], '~>', #13 + #10, [rfReplaceAll]);
-    if vl.Count = 0 then
-      Continue;
-    if vl.Count < AItemList.DbTableInfo.FieldsCount then
-      Continue; //!!
-
-    // check filters
-    FilterOk := True;
-    if fl.Count > 0 then
+    // первая строка - список колонок!
+    for i := 1 to sl.Count - 1 do
     begin
-      for n := 0 to AItemList.DbTableInfo.FieldsCount - 1 do
+      vl.Clear();
+      vl.CommaText := StringReplace(sl[i], '~>', #13 + #10, [rfReplaceAll]);
+      if vl.Count = 0 then
+        Continue;
+      {if vl.Count < AItemList.DbTableInfo.FieldsCount then
+        Continue; //!!    }
+
+      // check filters
+      FilterOk := True;
+      if fl.Count > 0 then
       begin
-        fn := AItemList.DbTableInfo.GetFieldName(n);
-        for m := 0 to fl.Count - 1 do
+        for n := 0 to AItemList.DbTableInfo.FieldsCount - 1 do
         begin
-          if fl.Names[m] = fn then
+          fn := AItemList.DbTableInfo.GetFieldName(n);
+          for m := 0 to fl.Count - 1 do
           begin
-            if fl.ValueFromIndex[m] <> vl[n] then
-              FilterOk := False;
-            Break;
+            if fl.Names[m] = fn then
+            begin
+              if fl.ValueFromIndex[m] <> vl[n] then
+                FilterOk := False;
+              Break;
+            end;
           end;
         end;
       end;
-    end;
 
-    if not FilterOk then
-      Continue;
-    // Create new item
-    id := StrToInt(vl[0]);
-    Item := AItemList.GetItemByID(id);
-    if not Assigned(Item) then
-      Item := AItemList.NewItem();
+      if not FilterOk then
+        Continue;
+      // Create new item
+      id := StrToInt(vl[0]);
+      Item := AItemList.GetItemByID(id);
+      if not Assigned(Item) then
+        Item := AItemList.NewItem();
 
-    // fill item values
-    for n := 0 to AItemList.DbTableInfo.FieldsCount - 1 do
-    begin
-      fn := AItemList.DbTableInfo.GetFieldName(n);
-      Item.SetValue(fn, vl[n]);
+      // fill item values
+      for n := 0 to AItemList.DbTableInfo.FieldsCount - 1 do
+      begin
+        if n >= vl.Count then
+          Break;
+        fn := AItemList.DbTableInfo.GetFieldName(n);
+        Item.SetValue(fn, vl[n]);
+      end;
     end;
+    Result := True;
+
+  finally
+    fl.Free();
+    vl.Free();
+    sl.Free();
   end;
-  fl.Free();
-  vl.Free();
-  sl.Free();
-  Result := True;
 end;
 
 function TDbDriverCSV.SetTable(AItemList: TDbItemList; Filter: string = ''): Boolean;
@@ -644,38 +682,38 @@ begin
 
   sl := TStringList.Create();
   vl := TStringList.Create();
+  try
 
-  // columns headers
-  for n := 0 to AItemList.DbTableInfo.FieldsCount - 1 do
-  begin
-    fn := AItemList.DbTableInfo.GetFieldName(n);
-    vl.Add(fn);
-  end;
-  sl.Add(vl.CommaText);
-
-  // rows
-  for i := 0 to AItemList.Count - 1 do
-  begin
-    vl.Clear();
-    Item := (AItemList[i] as TDbItem);
+    // columns headers
     for n := 0 to AItemList.DbTableInfo.FieldsCount - 1 do
     begin
       fn := AItemList.DbTableInfo.GetFieldName(n);
-      vl.Add(Item.GetValue(fn));
+      vl.Add(fn);
     end;
-    sl.Add(StringReplace(vl.CommaText, #13 + #10, '~>', [rfReplaceAll]));
-  end;
+    sl.Add(vl.CommaText);
 
-  vl.Free();
-  try
-    sl.SaveToFile(self.dbPath + '\' + AItemList.DbTableInfo.TableName + '.lst');
+    // rows
+    for i := 0 to AItemList.Count - 1 do
+    begin
+      vl.Clear();
+      Item := (AItemList[i] as TDbItem);
+      for n := 0 to AItemList.DbTableInfo.FieldsCount - 1 do
+      begin
+        fn := AItemList.DbTableInfo.GetFieldName(n);
+        vl.Add(Item.GetValue(fn));
+      end;
+      sl.Add(StringReplace(vl.CommaText, #13 + #10, '~>', [rfReplaceAll]));
+    end;
+
+    sl.SaveToFile(IncludeTrailingPathDelimiter(self.dbPath) + AItemList.DbTableInfo.TableName + '.lst');
+    Result := True;
   finally
+    vl.Free();
     sl.Free();
   end;
-
 end;
 
-function TDbDriverCSV.GetDBItem(FValue: string): TDbItem;
+function TDbDriverCSV.GetDBItem(AValue: string): TDbItem;
 var
   sTableName, sItemID, fn, sql: string;
   i: Integer;
@@ -684,14 +722,14 @@ var
   Filter: string;
 begin
   Result := nil;
-  i := Pos('~', FValue);
-  sTableName := Copy(FValue, 1, i - 1);
-  sItemID := Copy(FValue, i + 1, MaxInt);
+  i := Pos('~', AValue);
+  sTableName := Copy(AValue, 1, i - 1);
+  sItemID := Copy(AValue, i + 1, MaxInt);
   TableInfo := Self.GetDbTableInfo(sTableName);
   if not Assigned(TableInfo) then
     Exit;
 
-  ItemList := TDbItemList.Create(TableInfo);
+  ItemList := TDbItemList.Create(TableInfo, Self);
   Filter := 'id=' + sItemID;
 
   if not GetTable(ItemList, Filter) then
@@ -701,30 +739,31 @@ begin
   Result := (ItemList[0] as TDbItem);
 end;
 
-function TDbDriverCSV.SetDBItem(FItem: TDBItem): Boolean;
+function TDbDriverCSV.SetDBItem(AItem: TDBItem): Boolean;
 var
-  AItemList: TDbItemList;
-  AItem: TDbItem;
+  TmpItemList: TDbItemList;
+  TmpItem: TDbItem;
   i: Integer;
   fn: string;
 begin
   Result := False;
-  AItemList := TDbItemList.Create(FItem.DbTableInfo);
-  Self.GetTable(AItemList);
-  AItem := AItemList.GetItemByID(FItem.GetID);
-  if not Assigned(AItem) then
-  begin
-    FreeAndNil(AItemList);
-    Exit;
+  TmpItemList := TDbItemList.Create(AItem.DbTableInfo, Self);
+  try
+    Self.GetTable(TmpItemList);
+    TmpItem := TmpItemList.GetItemByID(AItem.GetID);
+    if Assigned(TmpItem) then
+    begin
+      for i := 0 to AItem.DbTableInfo.FieldsCount - 1 do
+      begin
+        fn := AItem.DbTableInfo.GetFieldName(i);
+        TmpItem.Values[fn] := AItem.Values[fn];
+      end;
+      Self.SetTable(TmpItemList);
+    end;
+    Result := True;
+  finally
+    FreeAndNil(TmpItemList);
   end;
-  for i := 0 to FItem.DbTableInfo.FieldsCount - 1 do
-  begin
-    fn := FItem.DbTableInfo.GetFieldName(i);
-    AItem.Values[fn] := FItem.Values[fn];
-  end;
-  Self.SetTable(AItemList);
-  FreeAndNil(AItemList);
-  Result := True;
 end;
 
 end.

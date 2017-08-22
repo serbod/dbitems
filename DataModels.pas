@@ -9,7 +9,7 @@ unit DataModels;
 interface
 
 uses
-  Classes, SysUtils, Controls, StdCtrls, ComCtrls;
+  Classes, SysUtils, Controls, StdCtrls, ComCtrls, DataStorage;
 
 type
 
@@ -33,19 +33,18 @@ type
   { TDataModel }
 
   TDataModel = class(TComponent)
-  private
-    FListItemRecList: TListItemRecList;
-    procedure OnChangeHandler(Sender: TObject);
-    procedure ListViewOnDeletionHandler(Sender: TObject; Item: TListItem);
   protected
     FControls: TList;
-    FValue: string;
+    FListItemRecList: TListItemRecList;
+    FDataStorage: IDataStorage;
     FAllowChange: Boolean;
-    procedure SetValue(const AValue: string);
-    procedure UpdateControl(AItem: TObject);
-    procedure UpdateListItem(AItem: TObject; AIndex: Integer);
+    procedure SetDataStorage(AValue: IDataStorage); virtual;
+    procedure UpdateControl(AItem: TObject); virtual;
+    procedure UpdateListItem(AItem: TObject; AIndex: Integer); virtual;
     procedure Notification(AComponent: TComponent; Operation: TOperation);
       override;
+    procedure ListViewOnDeletionHandler(Sender: TObject; Item: TListItem);
+    procedure OnChangeHandler(Sender: TObject); virtual;
   public
     procedure AfterConstruction; override;
     procedure BeforeDestruction; override;
@@ -59,14 +58,95 @@ type
     procedure DelControl(AControl: TControl);
     { if AIndex = -1 then delete all indexes from AItem }
     procedure DelListItem(AItem: TObject; AIndex: Integer = -1);
-    { Data model value, reflected on all observers }
-    property Value: string read FValue write SetValue;
+    { Set all assigned controls to value from DataStorage }
+    procedure UpdateControls(); virtual;
+    { DataStorage for value.
+      Changes in DataStorage.Value is not automatically reflected to controls!
+      You need to call UpdateControls() if DataStorage.Value changed }
+    property DataStorage: IDataStorage read FDataStorage write SetDataStorage;
     { Allow Value change from observer controls,
       auto-disabled when controls changed by model }
     property AllowChange: Boolean read FAllowChange;
   end;
 
+  { TDataModelText }
+
+  TDataModelText = class(TDataModel)
+  private
+    function GetValue: string;
+  protected
+    FTextValue: string;
+    procedure SetValue(const AValue: string);
+    procedure UpdateControl(AItem: TObject); override;
+    procedure UpdateListItem(AItem: TObject; AIndex: Integer); override;
+    procedure OnChangeHandler(Sender: TObject); override;
+  published
+    { Data model value, reflected on all observers }
+    property TextValue: string read GetValue write SetValue;
+  end;
+
 implementation
+
+{ TDataModelText }
+
+function TDataModelText.GetValue: string;
+begin
+  if Assigned(FDataStorage) then
+    Result := FDataStorage.GetValue()
+  else
+    Result := FTextValue;
+end;
+
+procedure TDataModelText.SetValue(const AValue: string);
+begin
+  if Assigned(FDataStorage) then
+    FDataStorage.SetValue(AValue);
+
+  if FTextValue <> AValue then
+  begin
+    FTextValue := AValue;
+    UpdateControls();
+  end;
+end;
+
+procedure TDataModelText.UpdateControl(AItem: TObject);
+begin
+  inherited UpdateControl(AItem);
+  if (AItem is TCustomEdit) then
+    (AItem as TCustomEdit).Text := FTextValue
+  else if (AItem is TLabel) then
+    (AItem as TLabel).Caption := FTextValue
+  else if (AItem is TStaticText) then
+    (AItem as TStaticText).Caption := FTextValue;
+end;
+
+procedure TDataModelText.UpdateListItem(AItem: TObject; AIndex: Integer);
+begin
+  inherited UpdateListItem(AItem, AIndex);
+  if (AItem is TCustomListBox) then
+  begin
+    (AItem as TCustomListBox).Items[AIndex] := FTextValue;
+  end
+  else if (AItem is TListItem) then
+  begin
+    if AIndex = 0 then
+      (AItem as TListItem).Caption := FTextValue
+    else
+      (AItem as TListItem).SubItems[AIndex-1] := FTextValue;
+  end;
+end;
+
+procedure TDataModelText.OnChangeHandler(Sender: TObject);
+begin
+  inherited OnChangeHandler(Sender);
+  if AllowChange and (Sender is TCustomEdit) then
+  begin
+    FTextValue := (Sender as TCustomEdit).Text;
+    if Assigned(FDataStorage) then
+      FDataStorage.SetValue(FTextValue);
+    UpdateControls();
+  end;
+end;
 
 { TListItemRecList }
 
@@ -112,74 +192,48 @@ end;
 
 procedure TDataModel.OnChangeHandler(Sender: TObject);
 begin
-  if AllowChange then
-  begin
-    if (Sender is TCustomEdit) then
-      Value := (Sender as TCustomEdit).Text;
-  end;
 end;
 
-procedure TDataModel.ListViewOnDeletionHandler(Sender: TObject; Item: TListItem
-  );
-begin
-  DelListItem(Item);
-end;
-
-procedure TDataModel.SetValue(const AValue: string);
+procedure TDataModel.UpdateControls();
 var
   i, Index: Integer;
   Item: TObject;
   ListItemRec: TListItemRec;
 begin
-  if FValue <> AValue then
-  begin
-    FAllowChange := False;
-    FValue := AValue;
-    try
-      // update controls
-      for i := 0 to FControls.Count-1 do
-      begin
-        Item := TObject(FControls[i]);
-        UpdateControl(Item);
-      end;
-
-      // update list items
-      for i := 0 to FListItemRecList.Count-1 do
-      begin
-        ListItemRec := FListItemRecList.GetItem(i);
-        Item := ListItemRec.ListObj;
-        Index := ListItemRec.Index;
-        UpdateListItem(Item, Index);
-      end;
-    finally
-      FAllowChange := True;
+  FAllowChange := False;
+  try
+    // update controls
+    for i := 0 to FControls.Count-1 do
+    begin
+      Item := TObject(FControls[i]);
+      UpdateControl(Item);
     end;
+
+    // update list items
+    for i := 0 to FListItemRecList.Count-1 do
+    begin
+      ListItemRec := FListItemRecList.GetItem(i);
+      Item := ListItemRec.ListObj;
+      Index := ListItemRec.Index;
+      UpdateListItem(Item, Index);
+    end;
+  finally
+    FAllowChange := True;
   end;
+end;
+
+procedure TDataModel.SetDataStorage(AValue: IDataStorage);
+begin
+  if FDataStorage = AValue then Exit;
+  FDataStorage := AValue;
 end;
 
 procedure TDataModel.UpdateControl(AItem: TObject);
 begin
-  if (AItem is TCustomEdit) then
-    (AItem as TCustomEdit).Text := FValue
-  else if (AItem is TLabel) then
-    (AItem as TLabel).Caption := FValue
-  else if (AItem is TStaticText) then
-    (AItem as TStaticText).Caption := FValue;
 end;
 
 procedure TDataModel.UpdateListItem(AItem: TObject; AIndex: Integer);
 begin
-  if (AItem is TCustomListBox) then
-  begin
-    (AItem as TCustomListBox).Items[AIndex] := FValue;
-  end
-  else if (AItem is TListItem) then
-  begin
-    if AIndex = 0 then
-      (AItem as TListItem).Caption := FValue
-    else
-      (AItem as TListItem).SubItems[AIndex-1] := FValue;
-  end;
 end;
 
 // remote component destroyed
@@ -201,13 +255,17 @@ begin
   end;
 end;
 
+procedure TDataModel.ListViewOnDeletionHandler(Sender: TObject; Item: TListItem);
+begin
+  DelListItem(Item);
+end;
+
 procedure TDataModel.AfterConstruction;
 begin
   inherited AfterConstruction;
   FControls := TList.Create();
   FListItemRecList := TListItemRecList.Create();
   FAllowChange := True;
-  FValue := '';
 end;
 
 procedure TDataModel.BeforeDestruction;
