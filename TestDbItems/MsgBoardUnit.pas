@@ -2,9 +2,12 @@ unit MsgBoardUnit;
 
 interface
 
-uses Classes, Contnrs, SysUtils, DbUnit;
+uses Classes, SysUtils, DbUnit;
 
 type
+
+  { TMsgBoardItem }
+
   TMsgBoardItem = class(TDbItem)
   public
     Desc: string;
@@ -13,9 +16,12 @@ type
     Author: string;
     BeginDate: TDateTime;
     EndDate: TDateTime;
+    class procedure FillDbTableInfo(ADbTableInfo: TDbTableInfo); override;
     function GetValue(const AName: string): string; override;
-    procedure SetValue(const AName, AValue: string); override;
+    procedure SetValue(const AName: string; AValue: string); override;
   end;
+
+  { TMsgBoardList }
 
   TMsgBoardList = class(TDbItemList)
   private
@@ -26,17 +32,29 @@ type
     EndDate: TDateTime;
     FileName: string;
     constructor Create(ADbDriver: TDbDriver); reintroduce;
-    procedure LoadList();
-    procedure SaveList();
+    class function GetDbItemClass(): TDbItemClass; override;
     procedure Sort();
-    //function AddItem(AItem: TMsgBoardItem): integer;
-    function NewItem(): TDbItem; override;
   end;
 
 
 implementation
 
 //uses MainFunc;
+
+class procedure TMsgBoardItem.FillDbTableInfo(ADbTableInfo: TDbTableInfo);
+begin
+  inherited FillDbTableInfo(ADbTableInfo);
+  with ADbTableInfo do
+  begin
+    TableName := 'msg_board';
+    AddField('desc', 'S');
+    AddField('text', 'S');
+    AddField('priority', 'I');
+    AddField('author', 'S');
+    AddField('begin_date', 'D');
+    AddField('end_date', 'D');
+  end;
+end;
 
 // === TMsgBoardItem ===
 function TMsgBoardItem.GetValue(const AName: string): string;
@@ -56,13 +74,13 @@ begin
   else if AName = 'end_date' then
     Result := DateTimeToStr(self.EndDate)
   else
-    Result := '';
+    Result := inherited GetValue(AName);
 end;
 
-procedure TMsgBoardItem.SetValue(const AName, AValue: string);
+procedure TMsgBoardItem.SetValue(const AName: string; AValue: string);
 begin
   if AName = 'id' then
-    self.FID := StrToIntDef(AValue, 0)
+    self.FID := StrToInt64Def(AValue, 0)
   else if AName = 'desc' then
     self.Desc := AValue
   else if AName = 'text' then
@@ -74,7 +92,9 @@ begin
   else if AName = 'begin_date' then
     self.BeginDate := StrToDateTime(AValue)
   else if AName = 'end_date' then
-    self.EndDate := StrToDateTime(AValue);
+    self.EndDate := StrToDateTime(AValue)
+  else
+    inherited SetValue(AName, AValue);
 end;
 
 // === TMsgBoardList ===
@@ -104,27 +124,9 @@ begin
   inherited Create(ti, ADbDriver);
 end;
 
-procedure TMsgBoardList.LoadList();
+class function TMsgBoardList.GetDbItemClass(): TDbItemClass;
 begin
-  DbDriver.GetTable(self);
-end;
-
-procedure TMsgBoardList.SaveList();
-begin
-  DbDriver.SetTable(self);
-end;
-
-{function TMsgBoardList.AddItem(AItem: TMsgBoardItem): Integer;
-begin
-  AItem.ID:=LastID;
-  Inc(LastID);
-  Add(AItem);
-end;}
-
-function TMsgBoardList.NewItem(): TDbItem;
-begin
-  Result := TMsgBoardItem.Create();
-  self.AddItem(Result, True);
+  Result := TMsgBoardItem;
 end;
 
 function CompareFunc(Item1, Item2: Pointer): integer;

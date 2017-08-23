@@ -37,7 +37,7 @@ begin
 
   MsgBoardList := TMsgBoardList.Create(DbDriver);
   MsgBoardList.FileName := 'Msg_Board.lst';
-  MsgBoardList.LoadList();
+  MsgBoardList.FetchAll();
 
   FrameDbBrowser := TFrameDbBrowser.Create(Self);
   FrameDbBrowser.Parent := Self;

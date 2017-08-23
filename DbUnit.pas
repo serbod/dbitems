@@ -10,8 +10,17 @@ interface
 
 uses SysUtils, Classes, Contnrs;
 
+const
+  DB_FIELD_TYPE_INTEGER  = 'I';  // +-0123456789
+  DB_FIELD_TYPE_NUMBER   = 'N';  // +-.E0123456789
+  DB_FIELD_TYPE_STRING   = 'S';
+  DB_FIELD_TYPE_DATETIME = 'D';  //
+  DB_FIELD_TYPE_LINK     = 'L';  // table_name~id
+
 type
   TDbTableInfo = class;
+
+  TDbItemID = Int64;
 
   { TDbFieldInfo }
   TDbFieldInfo = class(TObject)
@@ -28,43 +37,55 @@ type
     MasterTable: TDbTableInfo;
   end;
 
+  { TDbFieldInfoList }
+
+  TDbFieldInfoList = class(TList)
+  protected
+    procedure Notify(Ptr: Pointer; Action: TListNotification); override;
+  public
+    function GetItem(Index: Integer): TDbFieldInfo;
+  end;
 
   { TDbTableInfo }
-  // Информация о таблице БД
-  // - сведения о колонках и типах данных в колонках
-  // - название таблицы
+  // Database table information
+  // - info about fields (columns) and info type
+  // - table name
   TDbTableInfo = class(TObject)
   private
-    FFields: TObjectList;
+    FFieldInfoList: TDbFieldInfoList;
     function GetField(Index: Integer): TDbFieldInfo;
     function GetFieldName(Index: Integer): string;
     function GetFieldType(Index: Integer): string;
     function GetFieldsCount(): Integer;
   public
-    DBName: string; // Имя базы данных
-    TableName: string; // Имя таблицы
-    TableDescription: string; // Описание таблицы
-    KeyFieldName: string; // Имя ключевого поля (ID)
+    // Database name
+    DBName: string;
+    // Table name
+    TableName: string;
+    // Table description
+    TableDescription: string;
+    // Key field name (ID)
+    KeyFieldName: string;
     // Признак, того, что таблица соответствует своему аналогу в базе данных
     Valid: Boolean;
     constructor Create();
     destructor Destroy(); override;
-    // Список полей таблицы
+    // Field info by field index
     property Fields[Index: Integer]: TDbFieldInfo read GetField;
-    // Список имен полей таблицы
+    // Field name by field index
     property FieldNames[Index: Integer]: string read GetFieldName;
-    // Список типов полей таблицы
+    // Field type by field index
     property Types[Index: Integer]: string read GetFieldType;
-    // Количество полей
+    // Fields count
     property FieldsCount: Integer read GetFieldsCount;
-    // Создает поле с указаным именем и типом
+    // Create field with specified name and type
     function AddField(const FieldName, FieldType: string): TDbFieldInfo;
-    // Изменяет поле с указаным индексом, задает новое имя и тип
+    // Chnage field name and type by field index
     procedure ModifyField(const Index: Integer; const FieldName, FieldType: string);
     // Remove field from table
     procedure DeleteField(const FieldName: string);
-    // Возвращает номер поля по его имени
-    function FieldIndex(AName: string): Integer;
+    // Return field index from field name
+    function FieldIndex(const AName: string): Integer;
   end;
 
   { TDbTableInfoList }
@@ -76,16 +97,16 @@ type
     function GetItem(Index: Integer): TDbTableInfo;
   end;
 
-  // элемент таблицы БД, один ряд таблицы
+  // Database item, one row from table
   IDbItem = interface
-    function GetID(): Integer;
-    procedure SetID(AValue: Integer);
+    function GetID(): TDbItemID;
+    procedure SetID(AValue: TDbItemID);
     function GetName(): string;
     procedure SetName(const AValue: string);
-    // Возвращает значение по имени колонки
+    // Get value by field name
     function GetValue(const AName: string): string;
-    // Устанавливает значение по имени колонки
-    procedure SetValue(const AName, AValue: string);
+    // Set value by field name
+    procedure SetValue(const AName: string; AValue: string);
   end;
 
   { TDbItem }
@@ -97,30 +118,35 @@ type
     // Инициализирует массив значений, заполняет их пустыми значениями
     procedure InitValues();
   protected
-    FID: Integer;  // идентификатор элемента
-    FName: string; // строковое представление значения
+    // идентификатор элемента
+    FID: TDbItemID;
+    // строковое представление значения
+    FName: string;
     procedure GetLocal();
     procedure SetLocal();
     procedure GetGlobal();
     procedure SetGlobal();
   public
-    Actual: Boolean;
-    // признак соответствия данных элемента и БД
-    TimeStamp: TDateTime; // дата последнего изменения
-    DbTableInfo: TDbTableInfo; // информация о таблице
-    function GetID(): Integer;
-    procedure SetID(AValue: Integer);
+    // дата последнего изменения
+    TimeStamp: TDateTime;
+    // информация о таблице
+    DbTableInfo: TDbTableInfo;
+    class procedure FillDbTableInfo(ADbTableInfo: TDbTableInfo); virtual;
+    function GetID(): TDbItemID;
+    procedure SetID(AValue: TDbItemID);
     function GetName(): string;
     procedure SetName(const AValue: string);
     // Возвращает значение по имени колонки
     // Может быть переопределено в потомках
     function GetValue(const AName: string): string; virtual;
+
     // Возвращает DBItem по имени колонки
     // Должно быть переопределено в потомках
     //function GetDBItem(AName: string): TDBItem; virtual;
+
     // Устанавливает значение по имени колонки
     // Может быть переопределено в потомках
-    procedure SetValue(const AName, AValue: string); virtual;
+    procedure SetValue(const AName: string; AValue: string); virtual;
     // доступ к значению поля по его имени
     property Values[const AName: string]: string read GetValue write SetValue; default;
 
@@ -128,28 +154,60 @@ type
     procedure SetInteger(const AName: string; Value: Integer);
   end;
 
+
+  TDbItemClass = class of TDbItem;
   TDbDriver = class;
 
   // Список однотипных элементов базы данных
   // Проще говоря - таблица
+
+  { TDbItemList }
+
   TDbItemList = class(TObjectList)
   protected
-    FLastID: Integer;
+    FLastID: TDbItemID;
     FDbDriver: TDbDriver;
     FDbTableInfo: TDbTableInfo;
   public
     constructor Create(ADbTableInfo: TDbTableInfo; ADbDriver: TDbDriver); reintroduce;
+    class function GetDbItemClass(): TDbItemClass; virtual;
     function AddItem(AItem: TDbItem; SetNewID: Boolean = False): Integer;
     function GetItemByID(ItemID: Integer): TDbItem;
     function GetItemByName(ItemName: string; Wildcard: Boolean = False): TDbItem;
     function GetItemIDByName(ItemName: string; Wildcard: Boolean = False): Integer;
     function GetItemNameByID(ItemID: Integer): string;
     function NewItem(): TDbItem; virtual;
-    procedure LoadLocal();
-    procedure SaveLocal();
+    // read all items from database driver
+    procedure FetchAll();
+    // write all items to database driver
+    procedure StoreAll();
 
     property DbTableInfo: TDbTableInfo read FDbTableInfo;
     property DbDriver: TDbDriver read FDbDriver;
+  end;
+
+  { Database model, contains database description, all tables info }
+  { TDbModel }
+
+  TDbModel = class(TObject)
+  private
+    FTablesList: TDbTableInfoList;
+  protected
+    FDbDriver: TDbDriver;
+  public
+    DbName: string;
+    constructor Create();
+    destructor Destroy(); override;
+    // Возвращает описание таблицы по ее имени
+    function GetDbTableInfo(const TableName: string): TDbTableInfo;
+    // Возвращает DBItem по значению вида Table_name~id
+    function GetDBItem(const AValue: string): TDBItem; virtual;
+    function SetDBItem(AItem: TDBItem): Boolean; virtual;
+
+    // Список описаний таблиц TDbTableInfo
+    property TablesList: TDbTableInfoList read FTablesList;
+
+    property DbDriver: TDbDriver read FDbDriver write FDbDriver;
   end;
 
   // Драйвер базы данных - для доступа к хранилищу данных
@@ -176,8 +234,8 @@ type
     function SetTable(AItemList: TDbItemList; Filter: string = ''): Boolean; virtual; abstract;
     // Возвращает DBItem по значению вида Table_name~id
     // Должно быть переопределено в потомках
-    function GetDBItem(FValue: string): TDBItem; virtual; abstract;
-    function SetDBItem(FItem: TDBItem): Boolean; virtual; abstract;
+    function GetDBItem(const AValue: string): TDBItem; virtual; abstract;
+    function SetDBItem(AItem: TDBItem): Boolean; virtual; abstract;
 
     // Список описаний таблиц TDbTableInfo
     property TablesList: TDbTableInfoList read FTablesList;
@@ -194,14 +252,81 @@ type
     function Close(): Boolean; override;
     function GetTable(AItemList: TDbItemList; Filter: string = ''): Boolean; override;
     function SetTable(AItemList: TDbItemList; Filter: string = ''): Boolean; override;
-    function GetDBItem(AValue: string): TDBItem; override;
+    function GetDBItem(const AValue: string): TDBItem; override;
     function SetDBItem(AItem: TDBItem): Boolean; override;
   end;
 
 var
   GlobalDbDriver: TDbDriver;
 
+  function DefaultDbModel(): TDbModel;
+
 implementation
+
+var
+  LocalDefaultDbModel: TDbModel;
+
+function DefaultDbModel(): TDbModel;
+begin
+  Result := LocalDefaultDbModel;
+end;
+
+{ TDbModel }
+
+constructor TDbModel.Create;
+begin
+  inherited;
+  FTablesList := TDbTableInfoList.Create();
+end;
+
+destructor TDbModel.Destroy;
+begin
+  FreeAndNil(FTablesList);
+  inherited Destroy;
+end;
+
+function TDbModel.GetDbTableInfo(const TableName: string): TDbTableInfo;
+var
+  i: Integer;
+begin
+  for i := 0 to FTablesList.Count - 1 do
+  begin
+    Result := FTablesList.GetItem(i);
+    if Result.TableName = TableName then
+      Exit;
+  end;
+  Result := nil;
+end;
+
+function TDbModel.GetDBItem(const AValue: string): TDBItem;
+begin
+  if Assigned(DbDriver) then
+    Result := DbDriver.GetDBItem(AValue)
+  else
+    Result := nil;
+end;
+
+function TDbModel.SetDBItem(AItem: TDBItem): Boolean;
+begin
+  if Assigned(DbDriver) then
+    DbDriver.SetDBItem(AItem);
+end;
+
+{ TDbFieldInfoList }
+
+procedure TDbFieldInfoList.Notify(Ptr: Pointer; Action: TListNotification);
+begin
+  inherited Notify(Ptr, Action);
+  if (Action = lnDeleted) then
+  begin
+    TDbFieldInfo(Ptr).Free();
+  end;
+end;
+
+function TDbFieldInfoList.GetItem(Index: Integer): TDbFieldInfo;
+begin
+  Result := TDbFieldInfo(inherited Get(Index));
+end;
 
 { TDbTableInfoList }
 
@@ -225,7 +350,7 @@ begin
   Result := nil;
   if (Index >= FieldsCount) or (Index < 0) then
     Exit;
-  Result := (FFields[Index] as TDbFieldInfo);
+  Result := FFieldInfoList.GetItem(Index);
 end;
 
 function TDbTableInfo.GetFieldName(Index: Integer): string;
@@ -233,7 +358,7 @@ begin
   Result := '';
   if (Index >= FieldsCount) or (Index < 0) then
     Exit;
-  Result := (FFields[Index] as TDbFieldInfo).FieldName;
+  Result := FFieldInfoList.GetItem(Index).FieldName;
 end;
 
 function TDbTableInfo.GetFieldType(Index: Integer): string;
@@ -241,21 +366,21 @@ begin
   Result := '';
   if (Index >= FieldsCount) or (Index < 0) then
     Exit;
-  Result := (FFields[Index] as TDbFieldInfo).FieldType;
+  Result := FFieldInfoList.GetItem(Index).FieldType;
 end;
 
 function TDbTableInfo.GetFieldsCount(): Integer;
 begin
-  Result := Self.FFields.Count;
+  Result := FFieldInfoList.Count;
 end;
 
 function TDbTableInfo.AddField(const FieldName, FieldType: string): TDbFieldInfo;
 var
   i: Integer;
 begin
-  for i := 0 to FFields.Count - 1 do
+  for i := 0 to FFieldInfoList.Count - 1 do
   begin
-    Result := (FFields[i] as TDbFieldInfo);
+    Result := FFieldInfoList.GetItem(i);
     if Result.FieldName = FieldName then
       Exit;
   end;
@@ -264,7 +389,7 @@ begin
   Result.FieldName := FieldName;
   Result.FieldType := FieldType;
   Result.TableInfo := Self;
-  FFields.Add(Result);
+  FFieldInfoList.Add(Result);
 end;
 
 procedure TDbTableInfo.ModifyField(const Index: Integer;
@@ -273,9 +398,9 @@ var
   s: string;
   TmpField: TDbFieldInfo;
 begin
-  if (Index >= FFields.Count) or (Index < 0) then
+  if (Index >= FFieldInfoList.Count) or (Index < 0) then
     Exit;
-  TmpField := (FFields[Index] as TDbFieldInfo);
+  TmpField := FFieldInfoList.GetItem(Index);
   TmpField.FieldName := FieldName;
   s := FieldType;
   if Length(s) < 1 then
@@ -289,17 +414,17 @@ var
 begin
   i := FieldIndex(FieldName);
   if i <> -1 then
-    Self.FFields.Delete(i);
+    FFieldInfoList.Delete(i);
 end;
 
-function TDbTableInfo.FieldIndex(AName: string): Integer;
+function TDbTableInfo.FieldIndex(const AName: string): Integer;
 var
   i: Integer;
 begin
   Result := -1;
-  for i := 0 to FFields.Count do
+  for i := 0 to FFieldInfoList.Count do
   begin
-    if GetFieldName(i) = AName then
+    if FFieldInfoList.GetItem(i).FieldName = AName then
     begin
       Result := i;
       Exit;
@@ -310,7 +435,7 @@ end;
 constructor TDbTableInfo.Create();
 begin
   inherited Create();
-  Self.FFields := TObjectList.Create(False);
+  FFieldInfoList := TDbFieldInfoList.Create();
   Self.Valid := False;
   AddField('id', 'I');
   AddField('name', 'S');
@@ -319,7 +444,7 @@ end;
 
 destructor TDbTableInfo.Destroy();
 begin
-  FreeAndNil(Self.FFields);
+  FreeAndNil(FFieldInfoList);
   inherited Destroy();
 end;
 
@@ -340,12 +465,16 @@ procedure TDbItem.SetGlobal();
 begin
 end;
 
-function TDbItem.GetID(): Integer;
+class procedure TDbItem.FillDbTableInfo(ADbTableInfo: TDbTableInfo);
+begin
+end;
+
+function TDbItem.GetID(): TDbItemID;
 begin
   Result := FID;
 end;
 
-procedure TDbItem.SetID(AValue: Integer);
+procedure TDbItem.SetID(AValue: TDbItemID);
 begin
   FID := AValue;
 end;
@@ -397,7 +526,7 @@ end;
 //  if FName='id' then result:=self;
 //end;
 
-procedure TDbItem.SetValue(const AName, AValue: string);
+procedure TDbItem.SetValue(const AName: string; AValue: string);
 var
   i: Integer;
 begin
@@ -435,13 +564,18 @@ begin
   FDbDriver := ADbDriver;
 end;
 
-procedure TDbItemList.LoadLocal();
+class function TDbItemList.GetDbItemClass: TDbItemClass;
+begin
+  Result := TDbItem;
+end;
+
+procedure TDbItemList.FetchAll();
 begin
   if Assigned(DbDriver) then
     DbDriver.GetTable(self);
 end;
 
-procedure TDbItemList.SaveLocal();
+procedure TDbItemList.StoreAll();
 begin
   if Assigned(DbDriver) then
     DbDriver.SetTable(self);
@@ -531,8 +665,8 @@ end;
 
 function TDbItemList.NewItem(): TDbItem;
 begin
-  Result := TDbItem.Create();
-  self.AddItem(Result, True);
+  Result := GetDbItemClass().Create();
+  AddItem(Result, True);
 end;
 
 // === TDbDriver ===
@@ -589,7 +723,7 @@ end;
 
 function TDbDriverCSV.GetTable(AItemList: TDbItemList; Filter: string = ''): Boolean;
 var
-  sl, vl, fl: TStringList;
+  sl, vl, fl, cl: TStringList;
   i, n, m, id: Integer;
   Item: TDbItem;
   fn: string;
@@ -607,6 +741,7 @@ begin
     Exit;
 
   sl := TStringList.Create();
+  cl := TStringList.Create(); // column names
   vl := TStringList.Create(); // row values
   fl := TStringList.Create(); // filters
   try
@@ -614,8 +749,14 @@ begin
     fl.CommaText := Filter;
 
     // первая строка - список колонок!
-    for i := 1 to sl.Count - 1 do
+    for i := 0 to sl.Count - 1 do
     begin
+      if i = 0 then
+      begin
+        cl.CommaText := sl[i];
+        Continue;
+      end;
+
       vl.Clear();
       vl.CommaText := StringReplace(sl[i], '~>', #13 + #10, [rfReplaceAll]);
       if vl.Count = 0 then
@@ -627,9 +768,9 @@ begin
       FilterOk := True;
       if fl.Count > 0 then
       begin
-        for n := 0 to AItemList.DbTableInfo.FieldsCount - 1 do
+        for n := 0 to cl.Count - 1 do
         begin
-          fn := AItemList.DbTableInfo.GetFieldName(n);
+          fn := cl[n];
           for m := 0 to fl.Count - 1 do
           begin
             if fl.Names[m] = fn then
@@ -651,11 +792,9 @@ begin
         Item := AItemList.NewItem();
 
       // fill item values
-      for n := 0 to AItemList.DbTableInfo.FieldsCount - 1 do
+      for n := 0 to cl.Count - 1 do
       begin
-        if n >= vl.Count then
-          Break;
-        fn := AItemList.DbTableInfo.GetFieldName(n);
+        fn := cl[n];
         Item.SetValue(fn, vl[n]);
       end;
     end;
@@ -664,6 +803,7 @@ begin
   finally
     fl.Free();
     vl.Free();
+    cl.Free();
     sl.Free();
   end;
 end;
@@ -713,9 +853,9 @@ begin
   end;
 end;
 
-function TDbDriverCSV.GetDBItem(AValue: string): TDbItem;
+function TDbDriverCSV.GetDBItem(const AValue: string): TDbItem;
 var
-  sTableName, sItemID, fn, sql: string;
+  sTableName, sItemID: string;
   i: Integer;
   TableInfo: TDbTableInfo;
   ItemList: TDbItemList;
@@ -765,5 +905,13 @@ begin
     FreeAndNil(TmpItemList);
   end;
 end;
+
+initialization
+
+LocalDefaultDbModel := TDbModel.Create();
+
+finalization;
+
+FreeAndNil(LocalDefaultDbModel);
 
 end.
