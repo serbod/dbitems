@@ -19,7 +19,7 @@ type
     function LoadFromFile(): Boolean;
     procedure AfterConstruction(); override;
     procedure BeforeDestruction(); override;
-    function DbTableInfoToStorage(ADbTableInfo: TDbTableInfo): TDataStorage;
+    function DbTableInfoToStorage(ADbTableInfo: TDbTableInfo): IDataStorage;
     function DbTableInfoFromStorage(ADbTableInfo: TDbTableInfo;
       AStorage: IDataStorage): Boolean;
   end;
@@ -50,8 +50,11 @@ begin
   Storage.SetValue(SubStorage, 'Items');
 
   Serializer := TDataSerializerBencode.Create();
-  Serializer.StorageToFile(Storage, Filename);
-  FreeAndNil(Serializer);
+  try
+    Serializer.StorageToFile(Storage, Filename);
+  finally
+    FreeAndNil(Serializer);
+  end;
 
 end;
 
@@ -66,16 +69,16 @@ begin
   Result := False;
   if Filename = '' then
     Exit;
-  Storage := TDataStorage.Create(stDictionary);
+  Storage := nil;
 
   Serializer := TDataSerializerBencode.Create();
-  Result := Serializer.StorageFromFile(Storage, Filename);
-  FreeAndNil(Serializer);
-  if not Result then
-    Exit;
-  Result := False;
+  try
+    Storage := Serializer.StorageFromFile(Filename);
+  finally
+    FreeAndNil(Serializer);
+  end;
 
-  if Storage.GetString('DataType') <> 'DbTableInfoList' then
+  if (not Assigned(Storage)) or (Storage.GetString('DataType') <> 'DbTableInfoList') then
     Exit;
 
   SubStorage := Storage.GetObject('Items');
@@ -106,9 +109,9 @@ begin
   inherited BeforeDestruction;
 end;
 
-function TMdStorage.DbTableInfoToStorage(ADbTableInfo: TDbTableInfo): TDataStorage;
+function TMdStorage.DbTableInfoToStorage(ADbTableInfo: TDbTableInfo): IDataStorage;
 var
-  Storage, SubStorage: TDataStorage;
+  Storage, SubStorage: IDataStorage;
   i: Integer;
   TmpField: TDbFieldInfo;
 begin
@@ -125,6 +128,10 @@ begin
     Storage.SetValue(TmpField.FieldName, 'Name');
     Storage.SetValue(TmpField.FieldType, 'Type');
     Storage.SetValue(TmpField.FieldDescription, 'Desc');
+    if Assigned(TmpField.MasterTable) then
+      Storage.SetValue(TmpField.MasterTable.TableName, 'MasterTable');
+    if TmpField.IsIndexed then
+      Storage.SetValue(TmpField.IsIndexed, 'Indexed');
     SubStorage.SetValue(Storage);
   end;
 
@@ -146,11 +153,9 @@ var
   i: Integer;
 begin
   Result := False;
-  if not Assigned(AStorage) then
-    Exit;
-  if AStorage.GetStorageType <> stDictionary then
-    Exit;
-  if AStorage.GetString('DataType') <> 'DbTableInfo' then
+  if (not Assigned(AStorage))
+  or (AStorage.GetStorageType <> stDictionary)
+  or (AStorage.GetString('DataType') <> 'DbTableInfo') then
     Exit;
   ADbTableInfo.DBName := AStorage.GetString('DBName');
   ADbTableInfo.TableName := AStorage.GetString('TableName');
@@ -165,6 +170,7 @@ begin
       DbField := ADbTableInfo.AddField(SubStorageItem.GetString('Name'),
         SubStorageItem.GetString('Type'));
       DbField.FieldDescription := SubStorageItem.GetString('Desc');
+      DbField.IsIndexed := SubStorageItem.GetBool('Indexed');
     end;
   end;
   Result := True;

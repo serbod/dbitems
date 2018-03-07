@@ -35,6 +35,26 @@ type
     TableInfo: TDbTableInfo;
     // Field contain ID for MasterTable element
     MasterTable: TDbTableInfo;
+    // Indexed field - fast search, slow write
+    IsIndexed: Boolean;
+
+    { visual field properties }
+    // Width, MinWidth, MaxWidth
+    // WidthUnits (pixels, points, percents)
+    // Font
+    // TextAlign
+    // ReadOnly
+
+    { header }
+    // HeaderImage
+    // HeaderText
+    // HeaderHint
+    // SortMode (none, ascend, descend)
+
+    { Events }
+    // OnValidate() - after edit
+    // OnHint() - before show hint
+    // OnText() - before show text
   end;
 
   { TDbFieldInfoList }
@@ -85,7 +105,7 @@ type
     // Remove field from table
     procedure DeleteField(const FieldName: string);
     // Return field index from field name
-    function FieldIndex(const AName: string): Integer;
+    function GetFieldIndex(const AName: string): Integer;
   end;
 
   { TDbTableInfoList }
@@ -309,7 +329,9 @@ end;
 function TDbModel.SetDBItem(AItem: TDBItem): Boolean;
 begin
   if Assigned(DbDriver) then
-    DbDriver.SetDBItem(AItem);
+    Result := DbDriver.SetDBItem(AItem)
+  else
+    Result := False;
 end;
 
 { TDbFieldInfoList }
@@ -412,12 +434,12 @@ procedure TDbTableInfo.DeleteField(const FieldName: string);
 var
   i: Integer;
 begin
-  i := FieldIndex(FieldName);
+  i := GetFieldIndex(FieldName);
   if i <> -1 then
     FFieldInfoList.Delete(i);
 end;
 
-function TDbTableInfo.FieldIndex(const AName: string): Integer;
+function TDbTableInfo.GetFieldIndex(const AName: string): Integer;
 var
   i: Integer;
 begin
@@ -512,7 +534,7 @@ begin
   begin
     if Length(Self.FValues) = 0 then
       InitValues();
-    i := Self.DbTableInfo.FieldIndex(AName);
+    i := Self.DbTableInfo.GetFieldIndex(AName);
     if i < 0 then
       Result := ''
     else
@@ -540,7 +562,7 @@ begin
   begin
     if Length(Self.FValues) = 0 then
       InitValues();
-    i := Self.DbTableInfo.FieldIndex(AName);
+    i := Self.DbTableInfo.GetFieldIndex(AName);
     if i >= 0 then
       Self.FValues[i] := AValue;
   end;

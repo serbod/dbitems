@@ -25,8 +25,8 @@ type
     function Close(): Boolean; override;
     function GetTable(AItemList: TDbItemList; Filter: string = ''): Boolean; override;
     function SetTable(AItemList: TDbItemList; Filter: string = ''): Boolean; override;
-    function GetDBItem(FValue: string): TDBItem; override;
-    function SetDBItem(FItem: TDBItem): Boolean; override;
+    function GetDBItem(const AValue: string): TDBItem; override;
+    function SetDBItem(AItem: TDBItem): Boolean; override;
   end;
 
 
@@ -66,7 +66,7 @@ begin
       s := '';
       for i := 0 to TableInfo.FieldsCount - 1 do
       begin
-        sn := TableInfo.Names[i];
+        sn := TableInfo.FieldNames[i];
         st := TableInfo.Types[i];
         if Length(s) > 0 then
           s := s + ',';
@@ -194,7 +194,7 @@ begin
         Item := AItemList.NewItem();
       for n := 0 to AItemList.DbTableInfo.FieldsCount - 1 do
       begin
-        fn := AItemList.DbTableInfo.Names[n]; // field name
+        fn := AItemList.DbTableInfo.FieldNames[n]; // field name
         Item.SetValue(fn, Query.FieldValues[fn]);
       end;
       Query.Next();
@@ -213,11 +213,7 @@ var
   fn, iv, vl, sql: string;
 begin
   Result := False;
-  if not Active then
-    Exit;
-  if not Assigned(AItemList) then
-    Exit;
-  if not Assigned(db) then
+  if (not Active) or (not Assigned(AItemList)) or (not Assigned(db)) then
     Exit;
   CheckTable(AItemList.DbTableInfo);
 
@@ -227,7 +223,7 @@ begin
     Item := (AItemList[i] as TDbItem);
     for n := 0 to AItemList.DbTableInfo.FieldsCount - 1 do
     begin
-      fn := AItemList.DbTableInfo.Names[n]; // field name
+      fn := AItemList.DbTableInfo.FieldNames[n]; // field name
       iv := Item.GetValue(fn);                 // field value
       if n > 0 then
         vl := vl + ',';
@@ -245,7 +241,7 @@ begin
   end;
 end;
 
-function TDbDriverSQLite.GetDBItem(FValue: string): TDBItem;
+function TDbDriverSQLite.GetDBItem(const AValue: string): TDBItem;
 var
   sTableName, sItemID, fn, sql: string;
   i: Integer;
@@ -255,9 +251,9 @@ begin
   Result := nil;
   if not Assigned(db) then
     Exit;
-  i := Pos('~', FValue);
-  sTableName := Copy(FValue, 1, i - 1);
-  sItemID := Copy(FValue, i + 1, MaxInt);
+  i := Pos('~', AValue);
+  sTableName := Copy(AValue, 1, i - 1);
+  sItemID := Copy(AValue, i + 1, MaxInt);
   TableInfo := Self.GetDbTableInfo(sTableName);
   if not Assigned(TableInfo) then
     Exit;
@@ -275,7 +271,7 @@ begin
       Result := TDbItem.Create();
       for i := 0 to TableInfo.FieldsCount - 1 do
       begin
-        fn := TableInfo.Names[i];  // field name
+        fn := TableInfo.FieldNames[i];  // field name
         Result.SetValue(fn, Query.FieldValues[fn]);
       end;
       Query.Next();
@@ -286,7 +282,7 @@ begin
   end;
 end;
 
-function TDbDriverSQLite.SetDBItem(FItem: TDBItem): Boolean;
+function TDbDriverSQLite.SetDBItem(AItem: TDBItem): Boolean;
 var
   n: Integer;
   Item: TDbItem;
@@ -294,14 +290,10 @@ var
   fn, iv, vl, sql: string;
 begin
   Result := False;
-  if not Active then
-    Exit;
-  if not Assigned(FItem) then
-    Exit;
-  if not Assigned(db) then
+  if (not Active) or (not Assigned(AItem)) or (not Assigned(db)) then
     Exit;
 
-  TableInfo := FItem.DbTableInfo;
+  TableInfo := AItem.DbTableInfo;
   if not Assigned(TableInfo) then
     Exit;
   CheckTable(TableInfo);
@@ -309,8 +301,8 @@ begin
   vl := '';
   for n := 0 to TableInfo.FieldsCount - 1 do
   begin
-    fn := TableInfo.Names[n]; // field name
-    iv := FItem.GetValue(fn);
+    fn := TableInfo.FieldNames[n]; // field name
+    iv := AItem.GetValue(fn);
     if n > 0 then
       vl := vl + ',';
     vl := vl + '"' + iv + '"';

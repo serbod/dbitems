@@ -85,4 +85,12 @@ object FrameEditTableField: TFrameEditTableField
     OnClick = btnOKClick
     TabOrder = 4
   end
+  object cbFieldIndexed: TCheckBox
+    Left = 12
+    Height = 19
+    Top = 220
+    Width = 87
+    Caption = 'Indexed field'
+    TabOrder = 5
+  end
 end

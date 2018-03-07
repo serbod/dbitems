@@ -54,14 +54,9 @@ type
     { [name:object] items storage }
     FItems: TStringList;
     procedure AddValue(AStorageType: TDataStorageType; const AName: string; const AValue: AnsiString);
-    { get storage value }
-    function FGetValue(): AnsiString;
-    { set storage value }
-    procedure FSetValue(const AValue: AnsiString); overload;
   public
     constructor Create(AStorageType: TDataStorageType);
-    procedure AfterConstruction(); override;
-    procedure BeforeDestruction(); override;
+    destructor Destroy(); override;
     { Items count for (List, Dictionary) types }
     function GetCount(): integer;
     //procedure SetStorageType(const AValue: TDataStorageType);
@@ -93,7 +88,7 @@ type
     { stUnknown, stString, stInteger, stNumber, stList, stDictionary }
     property StorageType: TDataStorageType read GetStorageType;
     { Value for (String, Integer, Number) types }
-    property Value: AnsiString read FGetValue write FSetValue;
+    property Value: AnsiString read GetValue write SetValue;
   end;
 
 
@@ -103,13 +98,13 @@ type
   public
     function GetName(): string; virtual;
     // Serialize storage to string
-    function StorageToString(AStorage: IDataStorage): AnsiString; virtual;
+    function StorageToString(AStorage: IDataStorage): AnsiString; virtual; abstract;
     // De-serialize string into AStorage (not nil)
-    function StorageFromString(const AString: AnsiString): IDataStorage; virtual;
+    function StorageFromString(const AString: AnsiString): IDataStorage; virtual; abstract;
     // Save storage to file. Filename must be without extension
-    function StorageToFile(AStorage: IDataStorage; AFileName: string): Boolean; virtual;
+    function StorageToFile(AStorage: IDataStorage; AFileName: string): Boolean; virtual; abstract;
     // Fill AStorage (not nil) from file. Filename must be without extension
-    function StorageFromFile(AFileName: string): IDataStorage; virtual;
+    function StorageFromFile(AFileName: string): IDataStorage; virtual; abstract;
   end;
 
   { TDataSerializerBencode }
@@ -210,7 +205,7 @@ begin
   if not FileExists(FileName) then
     Exit;
   try
-    fs := TFileStream.Create(FileName, fmOpenRead);
+    fs := TFileStream.Create(FileName, fmOpenRead or fmShareDenyWrite);
   except
     fs := nil;
   end;
@@ -226,28 +221,22 @@ end;
 
 { TDataStorage }
 
-procedure TDataStorage.AfterConstruction;
+constructor TDataStorage.Create(AStorageType: TDataStorageType);
 begin
-  inherited;
-  FStorageType := stUnknown;
+  inherited Create();
+  FStorageType := AStorageType;
   FValue := '';
   FItems := TStringList.Create();
   FIntfList := TInterfaceList.Create();
   //FItems.OwnsObjects := True;
 end;
 
-procedure TDataStorage.BeforeDestruction;
+destructor TDataStorage.Destroy();
 begin
   Clear();
   FreeAndNil(FIntfList);
   FreeAndNil(FItems);
-  inherited;
-end;
-
-constructor TDataStorage.Create(AStorageType: TDataStorageType);
-begin
-  FStorageType := AStorageType;
-  inherited Create();
+  inherited Destroy();
 end;
 
 function TDataStorage.GetCount(): integer;
@@ -330,7 +319,7 @@ begin
   Result := (FItems.IndexOf(AName) <> -1);
 end;
 
-procedure TDataStorage.Clear;
+procedure TDataStorage.Clear();
 {var
   i: Integer;
   TmpObj: TObject; }
@@ -347,22 +336,12 @@ begin
   FValue := '';
 end;
 
-function TDataStorage.GetStorageType: TDataStorageType;
+function TDataStorage.GetStorageType(): TDataStorageType;
 begin
   Result := FStorageType;
 end;
 
-{procedure TDataStorage.SetStorageType(const AValue: TDataStorageType);
-begin
-  FStorageType := AValue;
-end;}
-
-function TDataStorage.FGetValue: AnsiString;
-begin
-  Result := FValue;
-end;
-
-function TDataStorage.GetValue: AnsiString;
+function TDataStorage.GetValue(): AnsiString;
 begin
   Result := FValue;
 end;
@@ -376,11 +355,7 @@ begin
   TmpItem.SetValue(AValue);
 
   FItems.Add(AName);
-end;
-
-procedure TDataStorage.FSetValue(const AValue: AnsiString);
-begin
-  FValue := AValue;
+  FIntfList.Add(TmpItem);
 end;
 
 procedure TDataStorage.SetValue(AValue: AnsiString; const AName: string);
@@ -442,27 +417,6 @@ end;
 function TDataSerializer.GetName: string;
 begin
   Result := 'NONE';
-end;
-
-function TDataSerializer.StorageToString(AStorage: IDataStorage): AnsiString;
-begin
-  Result := '';
-end;
-
-function TDataSerializer.StorageFromString(const AString: AnsiString
-  ): IDataStorage;
-begin
-  Result := nil;
-end;
-
-function TDataSerializer.StorageToFile(AStorage: IDataStorage; AFileName: string): Boolean;
-begin
-  Result := False;
-end;
-
-function TDataSerializer.StorageFromFile(AFileName: string): IDataStorage;
-begin
-  Result := nil;
 end;
 
 { TDataSerializerBencode }

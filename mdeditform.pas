@@ -22,6 +22,7 @@ type
     actSaveMdToFile: TAction;
     alMdTree: TActionList;
     gbMdTree: TGroupBox;
+    il16: TImageList;
     MenuItem1: TMenuItem;
     MenuItem2: TMenuItem;
     MenuItem3: TMenuItem;
@@ -62,13 +63,13 @@ var
 
 const
   ciIconItems = -1;
-  ciIconDbTable = -1;
-  ciIconItemInteger = -1;
-  ciIconItemNumber = -1;
-  ciIconItemString = -1;
-  ciIconItemDateTime = -1;
-  ciIconItemLink = -1;
-  ciIconItemBinaryData = -1;
+  ciIconDbTable = 0;
+  ciIconItemInteger = 1;
+  ciIconItemNumber = 2;
+  ciIconItemString = 3;
+  ciIconItemDateTime = 4;
+  ciIconItemLink = 5;
+  ciIconItemBinaryData = 6;
 
 implementation
 
@@ -274,6 +275,7 @@ begin
   begin
     // not exists, create db table node
     DbTableNode := AddItemToMdTree(DbTablesNode, AItem.TableName, ciIconDbTable, AItem);
+    DbTableNode.SelectedIndex := ciIconDbTable;
   end;
 
   // re-create table fields nodes
@@ -282,9 +284,11 @@ begin
   for i := 0 to AItem.FieldsCount - 1 do
   begin
     n := FieldTypeToIconIndex(AItem.Types[i]);
-    FieldNode := AddItemToMdTree(DbTableNode, AItem.Names[i], n, AItem.Fields[i]);
+    FieldNode := AddItemToMdTree(DbTableNode, AItem.FieldNames[i], n, AItem.Fields[i]);
+    FieldNode.SelectedIndex := n;
   end;
   tvMdTree.Items.EndUpdate();
+  tvMdTree.FullExpand();
 end;
 
 end.

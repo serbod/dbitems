@@ -15,6 +15,7 @@ type
     btnOK: TButton;
     cbFieldType: TComboBox;
     cbLinkedTable: TComboBox;
+    cbFieldIndexed: TCheckBox;
     edFieldName: TEdit;
     edFieldNameFull: TEdit;
     lbFieldName: TLabel;
@@ -108,6 +109,9 @@ begin
     cbLinkedTable.Enabled := True;
     cbLinkedTable.Text := Copy(DbFieldInfo.FieldType, 3, 9999);
   end;
+
+  cbFieldIndexed.Checked := DbFieldInfo.IsIndexed;
+
   Self.Visible := True;
 end;
 
@@ -143,6 +147,7 @@ begin
   DbFieldInfo.FieldName := Trim(edFieldName.Text);
   DbFieldInfo.FieldDescription := Trim(edFieldNameFull.Text);
   DbFieldInfo.FieldType := sFt;
+  DbFieldInfo.IsIndexed := cbFieldIndexed.Checked;
 
   if Assigned(OnItemRename) then
     OnItemRename(Self);

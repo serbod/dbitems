@@ -9,7 +9,7 @@
         <Filename Value="TestDbItems.lpr"/>
         <IsPartOfProject Value="True"/>
         <EditorIndex Value="2"/>
-        <CursorPos X="37" Y="18"/>
+        <CursorPos X="18" Y="16"/>
         <UsageCount Value="27"/>
         <Loaded Value="True"/>
       </Unit0>
@@ -20,8 +20,9 @@
         <HasResources Value="True"/>
         <ResourceBaseClass Value="Form"/>
         <UnitName Value="MainForm"/>
+        <IsVisibleTab Value="True"/>
         <TopLine Value="17"/>
-        <CursorPos X="24" Y="40"/>
+        <CursorPos X="44" Y="37"/>
         <UsageCount Value="27"/>
         <Loaded Value="True"/>
         <LoadedDesigner Value="True"/>
@@ -42,7 +43,6 @@
         <Filename Value="MsgBoardUnit.pas"/>
         <IsPartOfProject Value="True"/>
         <EditorIndex Value="5"/>
-        <TopLine Value="63"/>
         <CursorPos X="41" Y="83"/>
         <UsageCount Value="27"/>
         <Loaded Value="True"/>
@@ -55,10 +55,8 @@
       </Unit4>
       <Unit5>
         <Filename Value="..\DbUnit.pas"/>
-        <IsVisibleTab Value="True"/>
         <EditorIndex Value="4"/>
-        <TopLine Value="148"/>
-        <CursorPos X="38" Y="135"/>
+        <CursorPos X="83" Y="161"/>
         <UsageCount Value="13"/>
         <Loaded Value="True"/>
       </Unit5>
