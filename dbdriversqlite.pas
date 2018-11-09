@@ -49,7 +49,7 @@ begin
     Exit;
   if TableInfo.Valid then
     Exit;
-  if Self.TablesList.IndexOf(TableInfo) >= 0 then
+  if Self.TableInfoList.IndexOf(TableInfo) >= 0 then
     Exit;
 
   // get table info
@@ -101,7 +101,7 @@ begin
   end;
 
   TableInfo.Valid := True;
-  Self.TablesList.Add(TableInfo);
+  Self.TableInfoList.Add(TableInfo);
 end;
 
 procedure TDbDriverSQLite.DebugSQL(AMsg: string);
@@ -130,7 +130,7 @@ end;
 function TDbDriverSQLite.Close(): Boolean;
 begin
   Result := True;
-  TablesList.Clear();
+  TableInfoList.Clear();
   if not Active then
     Exit;
   if not Assigned(db) then
@@ -220,7 +220,7 @@ begin
   for i := 0 to AItemList.Count - 1 do
   begin
     vl := '';
-    Item := (AItemList[i] as TDbItem);
+    Item := AItemList.GetItem(i);
     for n := 0 to AItemList.DbTableInfo.FieldsCount - 1 do
     begin
       fn := AItemList.DbTableInfo.FieldNames[n]; // field name
@@ -268,7 +268,7 @@ begin
     Query.Open();
     while not Query.EOF do
     begin
-      Result := TDbItem.Create();
+      Result := TDbItem.Create(TableInfo);
       for i := 0 to TableInfo.FieldsCount - 1 do
       begin
         fn := TableInfo.FieldNames[i];  // field name

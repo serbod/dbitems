@@ -13,6 +13,8 @@ uses
 type
   TDataStorageType = (stUnknown, stString, stInteger, stNumber, stList, stDictionary);
 
+  { IDataStorage }
+
   IDataStorage = interface
     { Items count for (List, Dictionary) types }
     function GetCount(): integer;
@@ -22,6 +24,7 @@ type
     procedure SetValue(AValue: IDataStorage; const AName: string = ''); overload;
     procedure SetValue(AValue: AnsiString; const AName: string = ''); overload;
     procedure SetValue(AValue: Integer; const AName: string = ''); overload;
+    procedure SetValue(AValue: Int64; const AName: string = ''); overload;
     procedure SetValue(AValue: Real; const AName: string = ''); overload;
     procedure SetValue(AValue: Boolean; const AName: string = ''); overload;
 
@@ -36,11 +39,14 @@ type
     { Get string by name (from dictionary). If name empty, get value }
     function GetString(const AName: string = ''): string;
     function GetInteger(const AName: string = ''): Integer;
+    function GetInt64(const AName: string = ''): Int64;
     function GetCardinal(const AName: string = ''): Cardinal;
     function GetReal(const AName: string = ''): Real;
     function GetBool(const AName: string = ''): Boolean;
     function HaveName(const AName: string): Boolean;
     procedure Clear();
+    { get length of all contained items and subitems, including dictionary names }
+    function GetSize(): Int64;
   end;
 
   { TDataStorage }
@@ -66,10 +72,13 @@ type
     procedure SetValue(AValue: IDataStorage; const AName: string = ''); overload;
     procedure SetValue(AValue: AnsiString; const AName: string = ''); overload;
     procedure SetValue(AValue: Integer; const AName: string = ''); overload;
+    procedure SetValue(AValue: Int64; const AName: string = ''); overload;
     procedure SetValue(AValue: Real; const AName: string = ''); overload;
     procedure SetValue(AValue: Boolean; const AName: string = ''); overload;
     { get storage value }
     function GetValue(): AnsiString;
+    { set storage value }
+    procedure SetValueStr(const AValue: AnsiString); overload;
     { Get storage item by name }
     function GetObject(const AName: string): IDataStorage; overload;
     { Get storage item by index }
@@ -79,16 +88,22 @@ type
     { Get string by name (from dictionary). If name empty, get value }
     function GetString(const AName: string = ''): string;
     function GetInteger(const AName: string = ''): Integer;
+    function GetInt64(const AName: string = ''): Int64;
     function GetCardinal(const AName: string = ''): Cardinal;
     function GetReal(const AName: string = ''): Real;
     function GetBool(const AName: string = ''): Boolean;
     function HaveName(const AName: string): Boolean;
     procedure Clear();
+    { get size of all contained items and subitems, including dictionary names:
+      numerics - SizeOf()
+      strings - Length() }
+    function GetSize(): Int64;
+
     property Count: Integer read GetCount;
     { stUnknown, stString, stInteger, stNumber, stList, stDictionary }
     property StorageType: TDataStorageType read GetStorageType;
     { Value for (String, Integer, Number) types }
-    property Value: AnsiString read GetValue write SetValue;
+    property Value: AnsiString read GetValue write SetValueStr;
   end;
 
 
@@ -105,6 +120,10 @@ type
     function StorageToFile(AStorage: IDataStorage; AFileName: string): Boolean; virtual; abstract;
     // Fill AStorage (not nil) from file. Filename must be without extension
     function StorageFromFile(AFileName: string): IDataStorage; virtual; abstract;
+    // Save storage to TStream.
+    function StorageToStream(AStorage: IDataStorage; AStream: TStream): Boolean; virtual; abstract;
+    // Fill AStorage (not nil) from TStream.
+    function StorageFromStream(AStream: TStream): IDataStorage; virtual; abstract;
   end;
 
   { TDataSerializerBencode }
@@ -121,7 +140,6 @@ type
   }
   TDataSerializerBencode = class(TDataSerializer)
   private
-    function StorageToBencode(AStorage: IDataStorage): AnsiString;
     function ReadBencodeValue(const AString: AnsiString; var APos: Cardinal; ALen: Cardinal): IDataStorage;
     function ReadBencodeIntegerStr(const AString: AnsiString; var APos: Cardinal; ALen: Cardinal): AnsiString;
     function ReadBencodeString(const AString: AnsiString; var APos: Cardinal; ALen: Cardinal): AnsiString;
@@ -133,6 +151,8 @@ type
     function StorageFromString(const AString: AnsiString): IDataStorage; override;
     function StorageToFile(AStorage: IDataStorage; AFileName: string): Boolean; override;
     function StorageFromFile(AFileName: string): IDataStorage; override;
+    function StorageToStream(AStorage: IDataStorage; AStream: TStream): Boolean; override;
+    function StorageFromStream(AStream: TStream): IDataStorage; override;
   end;
 
 
@@ -148,32 +168,33 @@ implementation
 
 function StreamToStr(AStream: TStream): AnsiString;
 var
-  ss: TStringStream;
+  len, n: Integer;
 begin
-  Result := '';
-  ss := TStringStream.Create('');
-  try
+  if Assigned(AStream) and (AStream.Size > 0) then
+  begin
+    len := AStream.Size;
+    SetLength(Result, len);
     AStream.Seek(0, soFromBeginning);
-    ss.CopyFrom(AStream, AStream.Size);
-    Result := ss.DataString;
-  finally
-    ss.Free();
-  end;
+    n := AStream.Read(Result[1], AStream.Size);
+    if n < len then
+      SetLength(Result, n);
+  end
+  else
+    Result := '';
 end;
 
-function StrToStream(const s: AnsiString; AStream: TStream): boolean;
+function StrToStream(const s: AnsiString; AStream: TStream): Boolean;
 var
-  ss: TStringStream;
+  len, n: Integer;
 begin
-  ss := TStringStream.Create(s);
-  try
-    ss.Seek(0, soFromBeginning);
+  len := Length(s);
+  n := 0;
+  if Assigned(AStream) and (len > 0) then
+  begin
     AStream.Seek(0, soFromBeginning);
-    AStream.CopyFrom(ss, ss.Size);
-    Result := True;
-  finally
-    ss.Free();
+    n := AStream.Write(s[1], len);
   end;
+  Result := (n = len);
 end;
 
 function StrToFile(const FileName, Str: AnsiString): Boolean;
@@ -299,6 +320,11 @@ begin
   Result := StrToIntDef(GetString(AName), 0);
 end;
 
+function TDataStorage.GetInt64(const AName: string = ''): Int64;
+begin
+  Result := StrToInt64Def(GetString(AName), 0);
+end;
+
 function TDataStorage.GetCardinal(const AName: string): Cardinal;
 begin
   Result := StrToInt64Def(GetString(AName), 0);
@@ -394,6 +420,16 @@ begin
     FValue := IntToStr(AValue);
 end;
 
+procedure TDataStorage.SetValue(AValue: Int64; const AName: string);
+begin
+  if (FStorageType = stDictionary) or (FStorageType = stList) then
+  begin
+    AddValue(stInteger, AName, IntToStr(AValue));
+  end
+  else
+    FValue := IntToStr(AValue);
+end;
+
 procedure TDataStorage.SetValue(AValue: Boolean; const AName: string);
 begin
   if AValue then
@@ -412,6 +448,31 @@ begin
     FValue := FloatToStr(AValue, DataFormatSettings);
 end;
 
+procedure TDataStorage.SetValueStr(const AValue: AnsiString);
+begin
+  SetValue(AValue);
+end;
+
+function TDataStorage.GetSize(): Int64;
+var
+  i: Integer;
+begin
+  case FStorageType of
+    stUnknown: Result := 0;
+    stString, stInteger, stNumber: Result := Length(FValue);
+    stList, stDictionary:
+    begin
+      Result := 0;
+      for i := 0 to Count-1 do
+      begin
+        Result := Length(GetObjectName(i)) + GetObject(i).GetSize();
+      end;
+    end;
+  else
+    Result := 0;
+  end;
+end;
+
 { TDataSerializer }
 
 function TDataSerializer.GetName: string;
@@ -421,64 +482,79 @@ end;
 
 { TDataSerializerBencode }
 
-function TDataSerializerBencode.GetName: string;
+function TDataSerializerBencode.GetName(): string;
 begin
   Result := 'BENCODE';
 end;
 
-function TDataSerializerBencode.StorageToBencode(AStorage: IDataStorage): AnsiString;
+function TDataSerializerBencode.StorageToStream(AStorage: IDataStorage;
+  AStream: TStream): Boolean;
+
+procedure WriteStr(const AStr: AnsiString);
+begin
+  AStream.Write(PAnsiChar(AStr)^, Length(AStr));
+end;
+
 var
   sName: AnsiString;
   SubItem: IDataStorage;
   i: integer;
   s: AnsiString;
 begin
-  Result := '';
   case AStorage.GetStorageType() of
     stString:
     begin
       s := AStorage.GetValue();
-      Result := Result + IntToStr(Length(s)) + ':' + s;
+      WriteStr(IntToStr(Length(s)) + ':' + s);
     end;
 
     stNumber:
     begin
       s := AStorage.GetValue();
-      Result := Result + IntToStr(Length(s)) + ':' + s;
+      WriteStr(IntToStr(Length(s)) + ':' + s);
     end;
 
     stInteger:
     begin
-      Result := Result + 'i' + AStorage.GetValue() + 'e';
+      WriteStr('i' + AStorage.GetValue() + 'e');
     end;
 
     stDictionary:
     begin
-      Result := Result + 'd';
+      WriteStr('d');
       for i := 0 to AStorage.GetCount() - 1 do
       begin
         sName := AStorage.GetObjectName(i);
         SubItem := AStorage.GetObject(i);
         // name
-        Result := Result + IntToStr(Length(sName)) + ':' + sName;
+        WriteStr(IntToStr(Length(sName)) + ':' + sName);
         // value
-        Result := Result + StorageToBencode(SubItem);
+        StorageToStream(SubItem, AStream);
       end;
-      Result := Result + 'e';
+      WriteStr('e');
     end;
 
     stList:
     begin
-      Result := Result + 'l';
+      WriteStr('l');
       for i := 0 to AStorage.GetCount() - 1 do
       begin
         SubItem := AStorage.GetObject(i);
         // value
-        Result := Result + StorageToBencode(SubItem);
+        StorageToStream(SubItem, AStream);
       end;
-      Result := Result + 'e';
+      WriteStr('e');
     end;
   end;
+  Result := True;
+end;
+
+function TDataSerializerBencode.StorageFromStream(AStream: TStream): IDataStorage;
+var
+  s: AnsiString;
+begin
+  s := StreamToStr(AStream);
+  Result := StorageFromString(s);
 end;
 
 function TDataSerializerBencode.ReadBencodeIntegerStr(const AString: AnsiString; var APos: Cardinal; ALen: Cardinal): AnsiString;
@@ -545,6 +621,7 @@ begin
     if Assigned(SubStorage) then
       Result.SetValue(SubStorage, sName);
   end;
+  Assert(False, 'End of dict not found');
   Result := nil;
 end;
 
@@ -571,6 +648,7 @@ begin
     if Assigned(SubStorage) then
       Result.SetValue(SubStorage);
   end;
+  Assert(False, 'End of list not found');
   Result := nil;
 end;
 
@@ -609,14 +687,25 @@ begin
     else
     begin
       // error
+      Assert(1=0, 'Bencode parsing error, index=' + IntToStr(APos) + ' char=' + AString[APos]);
       Exit;
     end;
   end;
 end;
 
 function TDataSerializerBencode.StorageToString(AStorage: IDataStorage): AnsiString;
+var
+  ms: TMemoryStream;
 begin
-  Result := StorageToBencode(AStorage);
+  ms := TMemoryStream.Create();
+  try
+    if StorageToStream(AStorage, ms) then
+      Result := StreamToStr(ms)
+    else
+      Result := '';
+  finally
+    ms.Free();
+  end;
 end;
 
 function TDataSerializerBencode.StorageFromString(const AString: AnsiString): IDataStorage;
@@ -625,16 +714,27 @@ var
 begin
   n := 1;
   Result := ReadBencodeValue(AString, n, Length(AString));
+  Assert(Result <> nil, 'Read value failed, len='+IntToStr(Length(AString)));
 end;
 
 function TDataSerializerBencode.StorageToFile(AStorage: IDataStorage; AFileName: string): Boolean;
+var
+  ms: TMemoryStream;
 begin
   Result := False;
   if Trim(AFileName) = '' then
     Exit;
   if Pos('.be', AFileName) < (Length(AFileName) - 2) then
     AFileName := AFileName + '.be';
-  Result := StrToFile(AFileName, Self.StorageToString(AStorage));
+  //Result := StrToFile(AFileName, Self.StorageToString(AStorage));
+  ms := TMemoryStream.Create();
+  try
+    ms.Size := Trunc(AStorage.GetSize() * 1.1);
+    StorageToStream(AStorage, ms);
+    ms.SaveToFile(AFileName);
+  finally
+    ms.Free();
+  end;
 end;
 
 function TDataSerializerBencode.StorageFromFile(AFileName: string): IDataStorage;
