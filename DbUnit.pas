@@ -1,31 +1,34 @@
 {
-ÃÓ‰ÛÎ¸ ÔÓ‰ÒËÒÚÂÏ˚ ·‡Á˚ ‰‡ÌÌ˚ı.
+–ú–æ–¥—É–ª—å –ø–æ–¥—Å–∏—Å—Ç–µ–º—ã –±–∞–∑—ã –¥–∞–Ω–Ω—ã—Ö.
 
-!! ‚ TDbItem Ï‡ÒÒË‚ ÁÌ‡˜ÂÌËÈ ·ÓÎ¸¯Â ÌÂÓ·ıÓ‰ËÏÓ„Ó
+!! –≤ TDbItem –º–∞—Å—Å–∏–≤ –∑–Ω–∞—á–µ–Ω–∏–π –±–æ–ª—å—à–µ –Ω–µ–æ–±—Ö–æ–¥–∏–º–æ–≥–æ
 
+TDbDriverCSV - –¥—Ä–∞–π–≤–µ—Ä –ë–î, —Ö—Ä–∞–Ω—è—â–µ–π –¥–∞–Ω–Ω—ã–µ –≤ —Ñ–∞–π–ª–∞—Ö —Ñ–æ—Ä–º–∞—Ç–∞ CSV
+–ü–µ—Ä–µ–Ω–æ—Å—ã —Å—Ç—Ä–æ–∫ –∑–∞–º–µ–Ω—è—é—Ç—Å—è –Ω–∞ "~>"
+
+GlobalDbDriver - —É—Å—Ç–∞–Ω–æ–≤–∏—Ç–µ –ø–æ—Å–ª–µ —Å–æ–∑–¥–∞–Ω–∏—è –¥—Ä–∞–π–≤–µ—Ä–∞ –ë–î
+GlobalUseSnowflakeID - —É—Å—Ç–∞–Ω–æ–≤–∏—Ç—å–µ –≤ True –¥–ª—è –∏—Å–ø–æ–ª—å–∑–æ–≤–∞–Ω–∏—è Snowflake ID
 }
 unit DbUnit;
 
 interface
 
-uses SysUtils, Classes;
+uses SysUtils, Classes, Contnrs;
 
 const
   DB_FIELD_TYPE_INTEGER  = 'I';  // +-0123456789
   DB_FIELD_TYPE_NUMBER   = 'N';  // +-.E0123456789
   DB_FIELD_TYPE_STRING   = 'S';
-  DB_FIELD_TYPE_DATETIME = 'D';  // YYYY-MM-DDThh:mm:ss
+  DB_FIELD_TYPE_DATETIME = 'D';  //
   DB_FIELD_TYPE_LINK     = 'L';  // table_name~id
 
 type
   TDbTableInfo = class;
+  TDbItemList = class;
+  TDbItemClass = class of TDbItem;
 
   TDbItemID = Int64;
-
-  TDbItemClass = class of TDbItem;
-  TDbItemClassID = LongWord;
-
-  TDbItemListClass = class of TDbItemList;
+  TDbOperType = (otNone, otAdd, otUpdate, otDelete);
 
   { TDbFieldInfo }
   TDbFieldInfo = class(TObject)
@@ -44,6 +47,8 @@ type
     IsIndexed: Boolean;
 
     { visual field properties }
+    //IsVisible: Boolean;
+    Width: Integer;
     // Width, MinWidth, MaxWidth
     // WidthUnits (pixels, points, percents)
     // Font
@@ -77,8 +82,10 @@ type
   // - table name
   TDbTableInfo = class(TObject)
   private
-    FTopDbItemID: TDbItemID;
     FFieldInfoList: TDbFieldInfoList;
+    FItemsCache: TDbItemList;
+    FNameFieldIndex: Integer;
+    FDbItemClass: TDbItemClass;
     function GetField(Index: Integer): TDbFieldInfo;
     function GetFieldName(Index: Integer): string;
     function GetFieldType(Index: Integer): string;
@@ -92,16 +99,11 @@ type
     TableDescription: string;
     // Key field name (ID)
     KeyFieldName: string;
-    // œËÁÌ‡Í, ÚÓ„Ó, ˜ÚÓ Ú‡·ÎËˆ‡ ÒÓÓÚ‚ÂÚÒÚ‚ÛÂÚ Ò‚ÓÂÏÛ ‡Ì‡ÎÓ„Û ‚ ·‡ÁÂ ‰‡ÌÌ˚ı
+    // –ü—Ä–∏–∑–Ω–∞–∫, —Ç–æ–≥–æ, —á—Ç–æ —Ç–∞–±–ª–∏—Ü–∞ —Å–æ–æ—Ç–≤–µ—Ç—Å—Ç–≤—É–µ—Ç —Å–≤–æ–µ–º—É –∞–Ω–∞–ª–æ–≥—É –≤ –±–∞–∑–µ –¥–∞–Ω–Ω—ã—Ö
     Valid: Boolean;
-
-    ItemClass: TDbItemClass;
-    ItemClassID: TDbItemClassID;
-
-    ListClass: TDbItemListClass;
-
-    constructor Create();
+    constructor Create(AItemClass: TDbItemClass);
     destructor Destroy(); override;
+    function GetDbItemClass(): TDbItemClass; virtual;
     // Field info by field index
     property Fields[Index: Integer]: TDbFieldInfo read GetField;
     // Field name by field index
@@ -110,7 +112,6 @@ type
     property Types[Index: Integer]: string read GetFieldType;
     // Fields count
     property FieldsCount: Integer read GetFieldsCount;
-
     // Create field with specified name and type
     function AddField(const FieldName, FieldType: string): TDbFieldInfo;
     // Chnage field name and type by field index
@@ -119,11 +120,10 @@ type
     procedure DeleteField(const FieldName: string);
     // Return field index from field name
     function GetFieldIndex(const AName: string): Integer;
-
-    // Return next unique ID for new item
-    function GetNextItemID(): TDbItemID;
-    // Set current top ID, if new is bigger
-    procedure UpdateTopItemID(const AItemID: TDbItemID);
+    // Return 'name' field info
+    function GetNameField(): TDbFieldInfo;
+    // All created/readed items of same type
+    property ItemsCache: TDbItemList read FItemsCache write FItemsCache;
   end;
 
   { TDbTableInfoList }
@@ -133,8 +133,6 @@ type
     procedure Notify(Ptr: Pointer; Action: TListNotification); override;
   public
     function GetItem(Index: Integer): TDbTableInfo;
-    function GetItemByTableName(const AName: string): TDbTableInfo;
-    function GetItemByDbItemClass(AItemClass: TDbItemClass): TDbTableInfo;
   end;
 
   // Database item, one row from table
@@ -152,87 +150,68 @@ type
   { TDbItem }
 
   TDbItem = class(TInterfacedObject, IDbItem)
+  private
+    // –ú–∞—Å—Å–∏–≤ –∑–Ω–∞—á–µ–Ω–∏–π (–ø–æ–ª–µ–π) —ç–ª–µ–º–µ–Ω—Ç–∞
+    FValues: array of string;
+    // –ò–Ω–∏—Ü–∏–∞–ª–∏–∑–∏—Ä—É–µ—Ç –º–∞—Å—Å–∏–≤ –∑–Ω–∞—á–µ–Ω–∏–π, –∑–∞–ø–æ–ª–Ω—è–µ—Ç –∏—Ö –ø—É—Å—Ç—ã–º–∏ –∑–Ω–∞—á–µ–Ω–∏—è–º–∏
+    procedure InitValues();
   protected
-    // Ë‰ÂÌÚËÙËÍ‡ÚÓ ˝ÎÂÏÂÌÚ‡
+    // –∏–¥–µ–Ω—Ç–∏—Ñ–∏–∫–∞—Ç–æ—Ä —ç–ª–µ–º–µ–Ω—Ç–∞
     FID: TDbItemID;
-    // ÒÚÓÍÓ‚ÓÂ ÔÂ‰ÒÚ‡‚ÎÂÌËÂ ÁÌ‡˜ÂÌËˇ
+    // —Å—Ç—Ä–æ–∫–æ–≤–æ–µ –ø—Ä–µ–¥—Å—Ç–∞–≤–ª–µ–Ω–∏–µ –∑–Ω–∞—á–µ–Ω–∏—è
     FName: string;
-    FTimeStamp: TDateTime;
-    FDbTableInfo: TDbTableInfo;
     procedure GetLocal();
     procedure SetLocal();
     procedure GetGlobal();
     procedure SetGlobal();
   public
-    constructor Create(ADbTableInfo: TDbTableInfo); virtual;
-    // «‡ÔÓÎÌˇÂÚ ËÌÙÓÏ‡ˆË˛ Ó Ú‡·ÎËˆÂ ‰‡ÌÌÓ„Ó ˝ÎÂÏÂÌÚ‡
+    // –¥–∞—Ç–∞ –ø–æ—Å–ª–µ–¥–Ω–µ–≥–æ –∏–∑–º–µ–Ω–µ–Ω–∏—è
+    //TimeStamp: TDateTime;
+    // –∏–Ω—Ñ–æ—Ä–º–∞—Ü–∏—è –æ —Ç–∞–±–ª–∏—Ü–µ
+    DbTableInfo: TDbTableInfo;
     class procedure FillDbTableInfo(ADbTableInfo: TDbTableInfo); virtual;
     function GetID(): TDbItemID;
     procedure SetID(AValue: TDbItemID);
     function GetName(): string;
     procedure SetName(const AValue: string);
-
-    // ¬ÓÁ‚‡˘‡ÂÚ ÒÚÓÍÛ TableName~ItemID
-    function GetLinkID(): string;
-    // ¬ÓÁ‚‡˘‡ÂÚ ÁÌ‡˜ÂÌËÂ ÔÓ ËÏÂÌË ÍÓÎÓÌÍË
-    // ÃÓÊÂÚ ·˚Ú¸ ÔÂÂÓÔÂ‰ÂÎÂÌÓ ‚ ÔÓÚÓÏÍ‡ı
+    // –í–æ–∑–≤—Ä–∞—â–∞–µ—Ç –∑–Ω–∞—á–µ–Ω–∏–µ –ø–æ –∏–º–µ–Ω–∏ –∫–æ–ª–æ–Ω–∫–∏
+    // –ú–æ–∂–µ—Ç –±—ã—Ç—å –ø–µ—Ä–µ–æ–ø—Ä–µ–¥–µ–ª–µ–Ω–æ –≤ –ø–æ—Ç–æ–º–∫–∞—Ö
     function GetValue(const AName: string): string; virtual;
 
-    // ”ÒÚ‡Ì‡‚ÎË‚‡ÂÚ ÁÌ‡˜ÂÌËÂ ÔÓ ËÏÂÌË ÍÓÎÓÌÍË
-    // ÃÓÊÂÚ ·˚Ú¸ ÔÂÂÓÔÂ‰ÂÎÂÌÓ ‚ ÔÓÚÓÏÍ‡ı
-    procedure SetValue(const AName: string; AValue: string); virtual;
-    // ‰ÓÒÚÛÔ Í ÁÌ‡˜ÂÌË˛ ÔÓÎˇ ÔÓ Â„Ó ËÏÂÌË
-    property Values[const AName: string]: string read GetValue write SetValue; default;
+    // –í–æ–∑–≤—Ä–∞—â–∞–µ—Ç —Ç–µ–∫—Å—Ç–æ–≤–æ–µ –ø—Ä–µ–¥—Å—Ç–∞–≤–ª–µ–Ω–∏–µ (–¥–ª—è –ø–æ–ª—å–∑–æ–≤–∞—Ç–µ–ª—è) –∑–Ω–∞—á–µ–Ω–∏—è –ø–æ –∏–º–µ–Ω–∏ –∫–æ–ª–æ–Ω–∫–∏
+    function GetValueText(const AName: string): string; virtual;
 
-    // ‰‡Ú‡ ÔÓÒÎÂ‰ÌÂ„Ó ËÁÏÂÌÂÌËˇ
-    property TimeStamp: TDateTime read FTimeStamp write FTimeStamp;
-    // ËÌÙÓÏ‡ˆËˇ Ó Ú‡·ÎËˆÂ
-    property DbTableInfo: TDbTableInfo read FDbTableInfo;
+    // –£—Å—Ç–∞–Ω–∞–≤–ª–∏–≤–∞–µ—Ç –∑–Ω–∞—á–µ–Ω–∏–µ –ø–æ –∏–º–µ–Ω–∏ –∫–æ–ª–æ–Ω–∫–∏
+    // –ú–æ–∂–µ—Ç –±—ã—Ç—å –ø–µ—Ä–µ–æ–ø—Ä–µ–¥–µ–ª–µ–Ω–æ –≤ –ø–æ—Ç–æ–º–∫–∞—Ö
+    procedure SetValue(const AName: string; AValue: string); virtual;
+    // –¥–æ—Å—Ç—É–ø –∫ –∑–Ω–∞—á–µ–Ω–∏—é –ø–æ–ª—è –ø–æ –µ–≥–æ –∏–º–µ–Ω–∏
+    property Values[const AName: string]: string read GetValue write SetValue; default;
 
     function GetInteger(const AName: string): Integer;
     procedure SetInteger(const AName: string; Value: Integer);
   end;
 
-
-  { TDbItemGeneric }
-  { ”ÌË‚ÂÒ‡Î¸Ì˚È ˝ÎÂÏÂÌÚ, ÒÔÓÒÓ·Ì˚È ı‡ÌËÚ¸ ÁÌ‡˜ÂÌËˇ ÔÓÎÂÈ ‚ ÚÂÍÒÚÓ‚ÓÏ ‚Ë‰Â }
-  TDbItemGeneric = class(TDbItem)
-  private
-    // Ã‡ÒÒË‚ ÁÌ‡˜ÂÌËÈ (ÔÓÎÂÈ) ˝ÎÂÏÂÌÚ‡
-    FValues: array of string;
-    // »ÌËˆË‡ÎËÁËÛÂÚ Ï‡ÒÒË‚ ÁÌ‡˜ÂÌËÈ, Á‡ÔÓÎÌˇÂÚ Ëı ÔÛÒÚ˚ÏË ÁÌ‡˜ÂÌËˇÏË
-    procedure InitValues();
-  public
-    function GetValue(const AName: string): string; override;
-    procedure SetValue(const AName: string; AValue: string); override;
-    constructor Create(ADbTableInfo: TDbTableInfo); override;
-  end;
-
-
+  TDbManager = class;
   TDbDriver = class;
 
-  // —ÔËÒÓÍ Ó‰ÌÓÚËÔÌ˚ı ˝ÎÂÏÂÌÚÓ‚ ·‡Á˚ ‰‡ÌÌ˚ı
-  // œÓ˘Â „Ó‚Óˇ - Ú‡·ÎËˆ‡
+  // –°–ø–∏—Å–æ–∫ –æ–¥–Ω–æ—Ç–∏–ø–Ω—ã—Ö —ç–ª–µ–º–µ–Ω—Ç–æ–≤ –±–∞–∑—ã –¥–∞–Ω–Ω—ã—Ö
+  // –ü—Ä–æ—â–µ –≥–æ–≤–æ—Ä—è - —Ç–∞–±–ª–∏—Ü–∞
 
   { TDbItemList }
 
-  TDbItemList = class(TList)
+  TDbItemList = class(TObjectList)
   protected
-    FDbDriver: TDbDriver;
+    FLastID: TDbItemID;
+    FDbManager: TDbManager;
     FDbTableInfo: TDbTableInfo;
-    FOwnItems: Boolean;
-    procedure Notify(Ptr: Pointer; Action: TListNotification); override;
   public
-    constructor Create(ADbTableInfo: TDbTableInfo; ADbDriver: TDbDriver; AOwnItems: Boolean = False); reintroduce;
-    //class function GetDbItemClass(): TDbItemClass; virtual;
-    // Add item to list, set new ID if needed
+    constructor Create(ADbTableInfo: TDbTableInfo; AManager: TDbManager); reintroduce;
     function AddItem(AItem: TDbItem; SetNewID: Boolean = False): Integer;
-    function GetItem(AIndex: Integer): TDbItem;
+    function GetItemByIndex(AIndex: Integer): TDbItem;
     function GetItemByID(ItemID: TDbItemID): TDbItem;
     function GetItemByName(ItemName: string; Wildcard: Boolean = False): TDbItem;
     function GetItemIDByName(ItemName: string; Wildcard: Boolean = False): TDbItemID;
     function GetItemNameByID(ItemID: TDbItemID): string;
-    // Create new item, add to list, set next ID
     function NewItem(): TDbItem; virtual;
     // read all items from database driver
     procedure FetchAll();
@@ -240,359 +219,281 @@ type
     procedure StoreAll();
 
     property DbTableInfo: TDbTableInfo read FDbTableInfo;
-    property DbDriver: TDbDriver read FDbDriver;
-  end;
-
-  { TDbTableList }
-
-  TDbTableList = class(TList)
-  protected
-    procedure Notify(Ptr: Pointer; Action: TListNotification); override;
-  public
-    function GetItem(AIndex: Integer): TDbItemList;
-    function GetItemByName(const AName: string): TDbItemList;
+    property DbManager: TDbManager read FDbManager;
   end;
 
   { Database model, contains database description, all tables info }
-  { TDbModel }
+  { TDbManager }
 
-  TDbModel = class(TObject)
+  TDbManager = class(TObject)
   private
     FTableInfoList: TDbTableInfoList;
-    FTablesList: TDbTableList;
   protected
     FDbDriver: TDbDriver;
   public
     DbName: string;
     constructor Create();
     destructor Destroy(); override;
-    // ¬ÓÁ‚‡˘‡ÂÚ ÓÔËÒ‡ÌËÂ Ú‡·ÎËˆ˚ ÔÓ ÂÂ ËÏÂÌË
-    function GetDbTableInfo(const TableName: string): TDbTableInfo;
-    // ƒÓ·‡‚ÎˇÂÚ ÓÔËÒ‡ÌËÂ Ú‡·ÎËˆ˚ ‚ ÒÔËÒÓÍ ÓÔËÒ‡ÌËÈ
-    // —ÓÁ‰‡ÂÚ ÔÛÒÚÛ˛ ÎÓÍ‡Î¸ÌÛ˛ Ú‡·ÎËˆÛ ÔÓ ÂÂ ÓÔËÒ‡ÌË˛
-    function AddTable(ATableInfo: TDbTableInfo): TDbItemList;
-    // ƒÓ·‡‚ÎˇÂÚ ÔÓ‰‰ÂÊÍÛ ˝ÎÂÏÂÌÚ‡ Á‡‰‡ÌÌÓ„Ó ÍÎ‡ÒÒ‡
-    procedure AddItemClass(AItemClass: TDbItemClass);
-    // ¬ÓÁ‚‡˘‡ÂÚ Ú‡·ÎËˆÛ ‰Îˇ Á‡‰‡ÌÌÓ„Ó ÍÎ‡ÒÒ‡ ˝ÎÂÏÂÌÚ‡
-    function GetTableForItemClass(AItemClass: TDbItemClass): TDbItemList;
-    // ¬ÓÁ‚‡˘‡ÂÚ Ú‡·ÎËˆÛ ‰Îˇ Á‡‰‡ÌÌÓ„Ó ÓÔËÒ‡ÌËˇ Ú‡·ÎËˆ˚
-    function GetTableForTableInfo(ATableInfo: TDbTableInfo): TDbItemList;
 
-    // —ÓÁ‰‡ÂÚ ÌÓ‚˚È ˝ÎÂÏÂÌÚ DBItem
-    function NewDBItem(AItemClass: TDbItemClass): TDBItem; virtual;
-    // ¬ÓÁ‚‡˘‡ÂÚ DBItem ÔÓ ÁÌ‡˜ÂÌË˛ ‚Ë‰‡ Table_name~id
-    function GetDBItem(const ALinkID: string; ACreate: Boolean = False): TDBItem; virtual;
+    // –í–æ–∑–≤—Ä–∞—â–∞–µ—Ç –æ–ø–∏—Å–∞–Ω–∏–µ —Ç–∞–±–ª–∏—Ü—ã –ø–æ –∫–ª–∞—Å—Å—É —ç–ª–µ–º–µ–Ω—Ç–∞, —Å–æ–∑–¥–∞–µ—Ç –Ω–æ–≤–æ–µ –ø—Ä–∏ –Ω–µ–æ–±—Ö–æ–¥–∏–º–æ—Å—Ç–∏
+    function GetDbTableInfo(AItemClass: TDbItemClass): TDbTableInfo; overload;
+    // –í–æ–∑–≤—Ä–∞—â–∞–µ—Ç –æ–ø–∏—Å–∞–Ω–∏–µ —Ç–∞–±–ª–∏—Ü—ã –ø–æ –µ–µ –∏–º–µ–Ω–∏
+    function GetDbTableInfo(const TableName: string): TDbTableInfo; overload;
+    // –í–æ–∑–≤—Ä–∞—â–∞–µ—Ç DBItem –ø–æ –∑–Ω–∞—á–µ–Ω–∏—é –≤–∏–¥–∞ Table_name~id
+    function GetDBItem(const AValue: string): TDBItem; virtual;
     function SetDBItem(AItem: TDBItem): Boolean; virtual;
 
-    // —ÔËÒÓÍ ÓÔËÒ‡ÌËÈ Ú‡·ÎËˆ TDbTableInfo
+    // –°–ø–∏—Å–æ–∫ –æ–ø–∏—Å–∞–Ω–∏–π —Ç–∞–±–ª–∏—Ü TDbTableInfo
     property TableInfoList: TDbTableInfoList read FTableInfoList;
-    // —ÔËÒÓÍ ÎÓÍ‡Î¸Ì˚ı (ÍÂ¯ËÛ˛˘Ëı) Ú‡·ÎËˆ TDbItemList
-    property TablesList: TDbTableList read FTablesList;
 
     property DbDriver: TDbDriver read FDbDriver write FDbDriver;
   end;
 
-  // ƒ‡È‚Â ·‡Á˚ ‰‡ÌÌ˚ı - ‰Îˇ ‰ÓÒÚÛÔ‡ Í ı‡ÌËÎË˘Û ‰‡ÌÌ˚ı
-  // ›ÚÓ ·‡ÁÓ‚˚È ÍÎ‡ÒÒ, ‰ÓÎÊÂÌ ·˚Ú¸ ÔÂÂÓÔÂ‰ÂÎÂÌÓ ‰Îˇ ÍÓÌÍÂÚÌ˚ı ‚Ë‰Ó‚ ¡ƒ
+  // –î—Ä–∞–π–≤–µ—Ä –±–∞–∑—ã –¥–∞–Ω–Ω—ã—Ö - –¥–ª—è –¥–æ—Å—Ç—É–ø–∞ –∫ —Ö—Ä–∞–Ω–∏–ª–∏—â—É –¥–∞–Ω–Ω—ã—Ö
+  // –≠—Ç–æ –±–∞–∑–æ–≤—ã–π –∫–ª–∞—Å—Å, –¥–æ–ª–∂–µ–Ω –±—ã—Ç—å –ø–µ—Ä–µ–æ–ø—Ä–µ–¥–µ–ª–µ–Ω–æ –¥–ª—è –∫–æ–Ω–∫—Ä–µ—Ç–Ω—ã—Ö –≤–∏–¥–æ–≤ –ë–î
+
+  { TDbDriver }
+
   TDbDriver = class(TObject)
   private
     FOnDebugSQL: TGetStrProc;
-    FTableInfoList: TDbTableInfoList;
+    FDeletedItems: TList;
+    FDbManager: TDbManager;
+    function GetTablesList: TDbTableInfoList;
   public
     DbName: string;
-    constructor Create();
+
+    constructor Create(AManager: TDbManager);
     destructor Destroy(); override;
-    // ŒÚÍ˚‚‡ÂÚ ÛÍ‡Á‡ÌÌÛ˛ ·‡ÁÛ ‰‡ÌÌ˚ı
+    // –û—Ç–∫—Ä—ã–≤–∞–µ—Ç —É–∫–∞–∑–∞–Ω–Ω—É—é –±–∞–∑—É –¥–∞–Ω–Ω—ã—Ö
     function Open(ADbName: string): Boolean; virtual; abstract;
-    // «‡Í˚‚‡ÂÚ ÛÍ‡Á‡ÌÌÛ˛ ·‡ÁÛ ‰‡ÌÌ˚ı
+    // –ó–∞–∫—Ä—ã–≤–∞–µ—Ç —É–∫–∞–∑–∞–Ω–Ω—É—é –±–∞–∑—É –¥–∞–Ω–Ω—ã—Ö
     function Close(): Boolean; virtual; abstract;
-    // ¬ÓÁ‚‡˘‡ÂÚ ÓÔËÒ‡ÌËÂ Ú‡·ÎËˆ˚ ÔÓ ÂÂ ËÏÂÌË
+    // –í–æ–∑–≤—Ä–∞—â–∞–µ—Ç –æ–ø–∏—Å–∞–Ω–∏–µ —Ç–∞–±–ª–∏—Ü—ã –ø–æ –µ–µ –∏–º–µ–Ω–∏
     function GetDbTableInfo(TableName: string): TDbTableInfo;
-    // «‡ÔÓÎÌˇÂÚ ÛÍ‡Á‡ÌÌÛ˛ Ú‡·ÎËˆÛ ˝ÎÂÏÂÌÚ‡ÏË ËÁ ·‡Á˚ ‰‡ÌÌ˚ı, ÔÓ Á‡‰‡ÌÌÓÏÛ ÙËÎ¸ÚÛ
-    // ‘ËÎ¸Ú ‚ ‚Ë‰Â comma-delimited string Í‡Í ÔÓÎÂ=ÁÌ‡˜ÂÌËÂ
+    // –ó–∞–ø–æ–ª–Ω—è–µ—Ç —É–∫–∞–∑–∞–Ω–Ω—É—é —Ç–∞–±–ª–∏—Ü—É —ç–ª–µ–º–µ–Ω—Ç–∞–º–∏ –∏–∑ –±–∞–∑—ã –¥–∞–Ω–Ω—ã—Ö, –ø–æ –∑–∞–¥–∞–Ω–Ω–æ–º—É —Ñ–∏–ª—å—Ç—Ä—É
+    // –§–∏–ª—å—Ç—Ä –≤ –≤–∏–¥–µ comma-delimited string –∫–∞–∫ –ø–æ–ª–µ=–∑–Ω–∞—á–µ–Ω–∏–µ
     function GetTable(AItemList: TDbItemList; Filter: string = ''): Boolean;
       virtual; abstract;
-    // «‡ÔÓÎÌˇÂÚ ·‡ÁÛ ‰‡ÌÌ˚ı ˝ÎÂÏÂÌÚ‡ÏË ËÁ ÛÍ‡Á‡ÌÌÓÈ Ú‡·ÎËˆ˚, ÔÓ Á‡‰‡ÌÌÓÏÛ ÙËÎ¸ÚÛ
+    // –ó–∞–ø–æ–ª–Ω—è–µ—Ç –±–∞–∑—É –¥–∞–Ω–Ω—ã—Ö —ç–ª–µ–º–µ–Ω—Ç–∞–º–∏ –∏–∑ —É–∫–∞–∑–∞–Ω–Ω–æ–π —Ç–∞–±–ª–∏—Ü—ã, –ø–æ –∑–∞–¥–∞–Ω–Ω–æ–º—É —Ñ–∏–ª—å—Ç—Ä—É
     function SetTable(AItemList: TDbItemList; Filter: string = ''): Boolean; virtual; abstract;
-    // ¬ÓÁ‚‡˘‡ÂÚ DBItem ÔÓ ÁÌ‡˜ÂÌË˛ ‚Ë‰‡ Table_name~id
-    // ƒÓÎÊÌÓ ·˚Ú¸ ÔÂÂÓÔÂ‰ÂÎÂÌÓ ‚ ÔÓÚÓÏÍ‡ı
-    function GetDBItem(const ALinkID: string): TDBItem; virtual; abstract;
+    // –í–æ–∑–≤—Ä–∞—â–∞–µ—Ç DBItem –ø–æ –∑–Ω–∞—á–µ–Ω–∏—é –≤–∏–¥–∞ Table_name~id
+    // –î–æ–ª–∂–Ω–æ –±—ã—Ç—å –ø–µ—Ä–µ–æ–ø—Ä–µ–¥–µ–ª–µ–Ω–æ –≤ –ø–æ—Ç–æ–º–∫–∞—Ö
+    function GetDBItem(const AValue: string): TDBItem; virtual; abstract;
     function SetDBItem(AItem: TDBItem): Boolean; virtual; abstract;
+    // —É–¥–∞–ª—è–µ—Ç —ç–ª–µ–º–µ–Ω—Ç –∏–∑ –±–∞–∑—ã –¥–∞–Ω–Ω—ã—Ö –∏ –¥–æ–±–∞–≤–ª—è–µ—Ç –≤ —Å–ø–∏—Å–æ–∫ —É–¥–∞–ª–µ–Ω–Ω—ã—Ö
+    function DeleteDBItem(AItem: TDBItem): Boolean; virtual;
 
-    // —ÔËÒÓÍ ÓÔËÒ‡ÌËÈ Ú‡·ÎËˆ TDbTableInfo
-    property TableInfoList: TDbTableInfoList read FTableInfoList;
+    property DbManager: TDbManager read FDbManager;
+    // –°–ø–∏—Å–æ–∫ –æ–ø–∏—Å–∞–Ω–∏–π —Ç–∞–±–ª–∏—Ü TDbTableInfo
+    property TablesList: TDbTableInfoList read GetTablesList;
     // Triggers before SQL statement executed, return SQL text
     property OnDebugSQL: TGetStrProc read FOnDebugSQL write FOnDebugSQL;
   end;
 
+  { TDbDriverCSV }
+
   TDbDriverCSV = class(TDbDriver)
   private
     dbPath: string;
+    FEventSourcingMode: Boolean; // —Ä–µ–∂–∏–º —Ä–µ–≥–∏—Å—Ç—Ä–∞—Ü–∏–∏ —Å–æ–±—ã—Ç–∏–π (event sourcing)
     procedure CheckTable(TableInfo: TDbTableInfo);
+    function GetTableFileName(TableInfo: TDbTableInfo): string;
+    function ItemToStrCSV(AItem: TDBItem; ASL: TStringList = nil): string;
   public
+    LogFileName: string; // if defined, write tables change log
+
     function Open(ADbName: string): Boolean; override;
     function Close(): Boolean; override;
     function GetTable(AItemList: TDbItemList; Filter: string = ''): Boolean; override;
     function SetTable(AItemList: TDbItemList; Filter: string = ''): Boolean; override;
-    function GetDBItem(const ALinkID: string): TDBItem; override;
+    function GetDBItem(const AValue: string): TDBItem; override;
     function SetDBItem(AItem: TDBItem): Boolean; override;
+    function DeleteDBItem(AItem: TDBItem): Boolean; override;
+
+    property EventSourcingMode: Boolean read FEventSourcingMode;
   end;
 
 var
-  GlobalDbDriver: TDbDriver;
+  GlobalDbManager: TDbManager;
+  GlobalUseSnowflakeID: Boolean; // –ø—Ä–∏–∑–Ω–∞–∫ –∏—Å–ø–æ–ª—å–∑–æ–≤–∞–Ω–∏—è Snowflake ID –≤–º–µ—Å—Ç–æ –ø–æ—Ä—è–¥–∫–æ–≤–æ–≥–æ –Ω–æ–º–µ—Ä–∞
 
-  function DefaultDbModel(): TDbModel;
+function DefaultDbModel(): TDbManager;
 
-  function ParseLinkID(const ALinkID: string; out ATableName: string; out AItemID: TDbItemID): Boolean;
+// –í–æ–∑–≤—Ä–∞—â–∞–µ—Ç –Ω–æ–≤—ã–π GUID —Ñ–æ—Ä–º–∞—Ç–∞ Snowflake ID
+function GetSnowflakeID(): Int64;
+// –£—Å—Ç–∞–Ω–æ–≤–∏—Ç—å machine ID (0..1023)
+procedure SetMachineID(AValue: Integer);
+// –ü–æ–ª—É—á–∏—Ç—å –¥–∞—Ç—É/–≤—Ä–µ–º—è –∏–∑ Snowflake ID
+function GetDateTimeFromSnowflakeID(AValue: Int64): TDateTime;
 
-  function DateTimeToDbStr(ADateTime: TDateTime): string;
-  function DbStrToDateTime(const AValue: string): TDateTime;
-  function DbStrToDateTimeDef(const AValue: string; ADateTime: TDateTime): TDateTime;
+// 2023-07-24 10:26:34 -> 20230724102634
+function DateTimeToInt64(AValue: TDateTime): Int64;
+// 20230724102634 -> 2023-07-24 10:26:34
+function Int64ToDateTime(AValue: Int64): TDateTime;
 
 implementation
 
 var
-  LocalDefaultDbModel: TDbModel;
+  LocalDefaultDbModel: TDbManager;
+  SnowflakeIDPrevTime: Int64;
+  SnowflakeIDPrevSeq: Integer;
+  SnowflakeIDMachineID: Integer;
 
-function DefaultDbModel(): TDbModel;
+function DefaultDbModel(): TDbManager;
 begin
   Result := LocalDefaultDbModel;
 end;
 
-function ParseLinkID(const ALinkID: string; out ATableName: string; out AItemID: TDbItemID): Boolean;
+function GetSnowflakeID(): Int64;
 var
-  n: Integer;
+  UTime: Int64;
+  //dt: TDateTime;
+  ts: TTimeStamp;
 begin
-  n := Pos('~', ALinkID);
-  Result := (n > 0);
-  if Result then
+  { The first 41 bits are a timestamp, representing milliseconds since the chosen epoch.
+    The next 10 bits represent a machine ID, preventing clashes.
+    Twelve more bits represent a per-machine sequence number,
+    to allow creation of multiple snowflakes in the same millisecond. }
+  //dt := Now() + (GetLocalTimeOffset / MinsPerDay);
+  ts := DateTimeToTimeStamp(Now());
+  ts.Date := ts.Date - DateDelta - UnixDateDelta; // 0001 -> 1899 -> 1970
+  UTime := (ts.Date * MSecsPerDay) + ts.Time;
+
+  if UTime <> SnowflakeIDPrevTime then
   begin
-    ATableName := Copy(ALinkID, 1, n - 1);
-    AItemID := StrToIntDef(Copy(ALinkID, n + 1, MaxInt), 0);
+    SnowflakeIDPrevTime := UTime;
+    SnowflakeIDPrevSeq := 0;
+  end
+  else
+    Inc(SnowflakeIDPrevSeq);
+  Result := SnowflakeIDPrevTime;
+  Result := Result shl 10;
+  Result := Result or SnowflakeIDMachineID;
+  Result := Result shl 12;
+  Result := Result or (SnowflakeIDPrevSeq and $FFF); // 12 bit
+end;
+
+procedure SetMachineID(AValue: Integer);
+begin
+  SnowflakeIDMachineID := (AValue and $3FF); // 10 bit
+end;
+
+function GetDateTimeFromSnowflakeID(AValue: Int64): TDateTime;
+var
+  UTime: Int64;
+  ts: TTimeStamp;
+begin
+  UTime := (AValue shr 22); // msecs from 1970
+  ts.Date := UTime div MSecsPerDay; // days from 1970
+  ts.Time := UTime mod MSecsPerDay;
+  ts.Date := ts.Date + UnixDateDelta + DateDelta; // 1970 -> 1899 -> 0001
+  Result := TimeStampToDateTime(ts);
+end;
+
+// 2023-07-24 10:26:34 -> 20230724102634
+function DateTimeToInt64(AValue: TDateTime): Int64;
+var
+  ny, nm, nd: Word;
+  nh, nn, ns, nms: Word;
+begin
+  DecodeDate(AValue, ny, nm, nd);
+  DecodeTime(AValue, nh, nn, ns, nms);
+  Result := ns + (nn * 100) + (nh * 10000)
+    + (nd * 1000000) + (nm * 100000000) + (ny * 10000000000);
+end;
+
+// 20230724102634 -> 2023-07-24 10:26:34
+function Int64ToDateTime(AValue: Int64): TDateTime;
+var
+  ny, nm, nd: Word;
+  nh, nn, ns, nms: Word;
+begin
+  ny := AValue div 10000000000;
+  Dec(AValue, ny);
+  nm := AValue div 100000000;
+  Dec(AValue, nm);
+  nd := AValue div 1000000;
+  Dec(AValue, nd);
+  nh := AValue div 10000;
+  Dec(AValue, nh);
+  nn := AValue div 100;
+  Dec(AValue, nn);
+  ns := AValue;
+  nms := 0;
+  Result := EncodeDate(ny, nm, nd) + EncodeTime(nh, nn, ns, nms);
+end;
+
+function AppendStrToFile(AFileName, AStr: string): Boolean;
+var
+  fs: TFileStream;
+begin
+  if AStr = '' then Exit;
+  if FileExists(AFileName) then
+    fs := TFileStream.Create(AFileName, fmOpenWrite + fmShareDenyNone)
+  else
+    fs := TFileStream.Create(AFileName, fmCreate + fmShareDenyNone);
+  try
+    fs.Seek(0, soFromEnd);
+    fs.Write(AStr[1], Length(AStr) * SizeOf(Char));
+  finally
+    fs.Free();
   end;
 end;
 
-function DateTimeToDbStr(ADateTime: TDateTime): string;
+{ TDbManager }
+
+constructor TDbManager.Create;
 begin
-  Result := FormatDateTime('YYYY-MM-DDThh:nn:ss', ADateTime);
+  inherited;
+  FTableInfoList := TDbTableInfoList.Create();
 end;
 
-function DbStrToDateTime(const AValue: string): TDateTime;
+destructor TDbManager.Destroy;
 begin
-  Result := StrToDateTime(AValue);
+  FreeAndNil(FTableInfoList);
+  inherited Destroy;
 end;
 
-function DbStrToDateTimeDef(const AValue: string; ADateTime: TDateTime): TDateTime;
-begin
-  Result := StrToDateTimeDef(AValue, ADateTime);
-end;
-
-{ TDbTableList }
-
-procedure TDbTableList.Notify(Ptr: Pointer; Action: TListNotification);
-begin
-  inherited Notify(Ptr, Action);
-  if (Action = lnDeleted) then
-    TDbItemList(Ptr).Free();
-end;
-
-function TDbTableList.GetItem(AIndex: Integer): TDbItemList;
-begin
-  Result := TDbItemList(Get(AIndex));
-end;
-
-function TDbTableList.GetItemByName(const AName: string): TDbItemList;
+function TDbManager.GetDbTableInfo(AItemClass: TDbItemClass): TDbTableInfo;
 var
   i: Integer;
 begin
-  for i := 0 to Count-1 do
+  for i := 0 to FTableInfoList.Count - 1 do
   begin
-    Result := GetItem(i);
-    if Result.DbTableInfo.TableName = AName then
+    Result := FTableInfoList.GetItem(i);
+    if Result.GetDbItemClass() = AItemClass then
+      Exit;
+  end;
+  // –Ω–µ –Ω–∞—à–ª–∏, —Å–æ–∑–¥–∞–µ–º –Ω–æ–≤—É—é –∏ –¥–æ–±–∞–≤–ª—è–µ–º –≤ —Å–ø–∏—Å–æ–∫
+  Result := TDbTableInfo.Create(AItemClass);
+  Result.ItemsCache := TDbItemList.Create(Result, Self);
+  AItemClass.FillDbTableInfo(Result);
+  FTableInfoList.Add(Result);
+end;
+
+function TDbManager.GetDbTableInfo(const TableName: string): TDbTableInfo;
+var
+  i: Integer;
+begin
+  for i := 0 to FTableInfoList.Count - 1 do
+  begin
+    Result := FTableInfoList.GetItem(i);
+    if Result.TableName = TableName then
       Exit;
   end;
   Result := nil;
 end;
 
-{ TDbItemGeneric }
-
-procedure TDbItemGeneric.InitValues();
-var
-  i: Integer;
-begin
-  if Assigned(DbTableInfo) then
-  begin
-    SetLength(FValues, DbTableInfo.FieldsCount);
-    for i := 0 to DbTableInfo.FieldsCount - 1 do
-      FValues[i] := '';
-  end
-  else
-  begin
-    SetLength(FValues, 0);
-  end;
-end;
-
-function TDbItemGeneric.GetValue(const AName: string): string;
-var
-  i: Integer;
-begin
-  if AName = 'id' then
-    Result := IntToStr(FID)
-  else if AName = 'timestamp' then
-    Result := DateTimeToStr(self.Timestamp)
-  else if AName = 'name' then
-    Result := FName
-  else
-  begin
-    if Length(FValues) = 0 then
-      InitValues();
-    if Assigned(DbTableInfo) then
-      i := DbTableInfo.GetFieldIndex(AName)
-    else
-      i := -1;
-
-    if i >= 0 then
-      Result := FValues[i]
-    else
-      Result := '';
-  end;
-  //Result := inherited GetValue(AName);
-end;
-
-procedure TDbItemGeneric.SetValue(const AName: string; AValue: string);
-var
-  i: Integer;
-begin
-  if AName = 'id' then
-    FID := StrToIntDef(AValue, 0)
-  else if AName = 'timestamp' then
-    FTimestamp := StrToDateTimeDef(AValue, FTimestamp)
-  else if AName = 'name' then
-    FName := AValue
-  else
-  begin
-    if Length(FValues) = 0 then
-      InitValues();
-    if Assigned(DbTableInfo) then
-      i := DbTableInfo.GetFieldIndex(AName)
-    else
-      i := -1;
-
-    if i >= 0 then
-      FValues[i] := AValue;
-  end;
-  //inherited SetValue(AName, AValue);
-end;
-
-constructor TDbItemGeneric.Create(ADbTableInfo: TDbTableInfo);
-begin
-  inherited Create(ADbTableInfo);
-  InitValues();
-end;
-
-{ TDbModel }
-
-constructor TDbModel.Create();
-begin
-  inherited;
-  FTableInfoList := TDbTableInfoList.Create();
-  FTablesList := TDbTableList.Create();
-end;
-
-destructor TDbModel.Destroy();
-begin
-  FreeAndNil(FTablesList);
-  FreeAndNil(FTableInfoList);
-  inherited Destroy;
-end;
-
-function TDbModel.GetDbTableInfo(const TableName: string): TDbTableInfo;
-begin
-  Result := TableInfoList.GetItemByTableName(TableName);
-end;
-
-function TDbModel.AddTable(ATableInfo: TDbTableInfo): TDbItemList;
-var
-  n: Integer;
-begin
-  n := TableInfoList.IndexOf(ATableInfo);
-  if n < 0 then
-    n := TableInfoList.Add(ATableInfo);
-
-  Result := TablesList.GetItemByName(ATableInfo.TableName);
-  if not Assigned(Result) then
-  begin
-    Result := ATableInfo.ListClass.Create(ATableInfo, DbDriver, True);
-    TablesList.Add(Result);
-  end;
-end;
-
-procedure TDbModel.AddItemClass(AItemClass: TDbItemClass);
-var
-  TmpTableInfo: TDbTableInfo;
-begin
-  TmpTableInfo := TDbTableInfo.Create();
-  AItemClass.FillDbTableInfo(TmpTableInfo);
-
-  if TableInfoList.GetItemByTableName(TmpTableInfo.TableName) <> nil then
-    TmpTableInfo.Free()
-  else
-    AddTable(TmpTableInfo);
-end;
-
-function TDbModel.GetTableForItemClass(AItemClass: TDbItemClass): TDbItemList;
-var
-  TmpTableInfo: TDbTableInfo;
-begin
-  TmpTableInfo := TableInfoList.GetItemByDbItemClass(AItemClass);
-  Result := TablesList.GetItemByName(TmpTableInfo.TableName);
-end;
-
-function TDbModel.GetTableForTableInfo(ATableInfo: TDbTableInfo): TDbItemList;
-begin
-  Result := TablesList.GetItemByName(ATableInfo.TableName);
-end;
-
-function TDbModel.NewDBItem(AItemClass: TDbItemClass): TDBItem;
-var
-  TmpTable: TDbItemList;
-begin
-  TmpTable := GetTableForItemClass(AItemClass);
-  Result := TmpTable.NewItem();
-end;
-
-function TDbModel.GetDBItem(const ALinkID: string; ACreate: Boolean): TDBItem;
-var
-  sTableName: string;
-  TmpItemID: TDbItemID;
-  TmpTableInfo: TDbTableInfo;
-  TmpTable: TDbItemList;
+function TDbManager.GetDBItem(const AValue: string): TDBItem;
 begin
   if Assigned(DbDriver) then
-    Result := DbDriver.GetDBItem(ALinkID)
+    Result := DbDriver.GetDBItem(AValue)
   else
     Result := nil;
-
-  if not Assigned(Result) and ACreate then
-  begin
-    if ParseLinkID(ALinkID, sTableName, TmpItemID) then
-    begin
-      TmpTableInfo := GetDbTableInfo(sTableName);
-      if Assigned(TmpTableInfo) then
-      begin
-        //Result := TmpTableInfo.ItemClass.Create(TmpTableInfo);
-        TmpTable := TablesList.GetItemByName(TmpTableInfo.TableName);
-        if Assigned(TmpTable) then
-        begin
-          Result := TmpTable.NewItem();
-          Result.SetID(TmpItemID);
-        end;
-      end;
-    end;
-  end;
 end;
 
-function TDbModel.SetDBItem(AItem: TDBItem): Boolean;
+function TDbManager.SetDBItem(AItem: TDBItem): Boolean;
 begin
   if Assigned(DbDriver) then
     Result := DbDriver.SetDBItem(AItem)
@@ -632,33 +533,29 @@ begin
   Result := TDbTableInfo(inherited Get(Index));
 end;
 
-function TDbTableInfoList.GetItemByTableName(const AName: string): TDbTableInfo;
-var
-  i: Integer;
-begin
-  for i := 0 to Count-1 do
-  begin
-    Result := GetItem(i);
-    if Result.TableName = AName then
-      Exit;
-  end;
-  Result := nil;
-end;
-
-function TDbTableInfoList.GetItemByDbItemClass(AItemClass: TDbItemClass): TDbTableInfo;
-var
-  i: Integer;
-begin
-  for i := 0 to Count-1 do
-  begin
-    Result := GetItem(i);
-    if Result.ItemClass = AItemClass then
-      Exit;
-  end;
-  Result := nil;
-end;
-
 // === TDbTableInfo ===
+constructor TDbTableInfo.Create(AItemClass: TDbItemClass);
+begin
+  inherited Create();
+  FFieldInfoList := TDbFieldInfoList.Create();
+  FDbItemClass := AItemClass;
+  Self.Valid := False;
+  AddField('id', 'I');
+  AddField('name', 'S');
+  //AddField('timestamp', 'D');
+end;
+
+destructor TDbTableInfo.Destroy();
+begin
+  FreeAndNil(FFieldInfoList);
+  inherited Destroy();
+end;
+
+function TDbTableInfo.GetDbItemClass: TDbItemClass;
+begin
+  Result := FDbItemClass;
+end;
+
 function TDbTableInfo.GetField(Index: Integer): TDbFieldInfo;
 begin
   Result := nil;
@@ -675,11 +572,6 @@ begin
   Result := FFieldInfoList.GetItem(Index).FieldName;
 end;
 
-function TDbTableInfo.GetFieldsCount: Integer;
-begin
-  Result := FFieldInfoList.Count;
-end;
-
 function TDbTableInfo.GetFieldType(Index: Integer): string;
 begin
   Result := '';
@@ -688,9 +580,14 @@ begin
   Result := FFieldInfoList.GetItem(Index).FieldType;
 end;
 
+function TDbTableInfo.GetFieldsCount(): Integer;
+begin
+  Result := FFieldInfoList.Count;
+end;
+
 function TDbTableInfo.AddField(const FieldName, FieldType: string): TDbFieldInfo;
 var
-  i: Integer;
+  i, n: Integer;
 begin
   for i := 0 to FFieldInfoList.Count - 1 do
   begin
@@ -703,7 +600,9 @@ begin
   Result.FieldName := FieldName;
   Result.FieldType := FieldType;
   Result.TableInfo := Self;
-  FFieldInfoList.Add(Result);
+  n := FFieldInfoList.Add(Result);
+  if FieldName = 'name' then
+    FNameFieldIndex := n;
 end;
 
 procedure TDbTableInfo.ModifyField(const Index: Integer;
@@ -736,7 +635,7 @@ var
   i: Integer;
 begin
   Result := -1;
-  for i := 0 to FFieldInfoList.Count do
+  for i := 0 to FFieldInfoList.Count-1 do
   begin
     if FFieldInfoList.GetItem(i).FieldName = AName then
     begin
@@ -746,36 +645,9 @@ begin
   end;
 end;
 
-function TDbTableInfo.GetNextItemID(): TDbItemID;
+function TDbTableInfo.GetNameField: TDbFieldInfo;
 begin
-  Inc(FTopDbItemID);
-  Result := FTopDbItemID;
-end;
-
-procedure TDbTableInfo.UpdateTopItemID(const AItemID: TDbItemID);
-begin
-  if FTopDbItemID < AItemID then
-    FTopDbItemID := AItemID;
-end;
-
-constructor TDbTableInfo.Create();
-begin
-  inherited Create();
-  FFieldInfoList := TDbFieldInfoList.Create();
-  Valid := False;
-  ItemClass := TDbItem;
-  ListClass := TDbItemList;
-  {AddField('id', 'I');
-  AddField('name', 'S');
-  AddField('timestamp', 'D');
-  KeyFieldName := 'id';
-  }
-end;
-
-destructor TDbTableInfo.Destroy();
-begin
-  FreeAndNil(FFieldInfoList);
-  inherited Destroy();
+  Result := Fields[FNameFieldIndex];
 end;
 
 // === TDbItem ===
@@ -795,18 +667,8 @@ procedure TDbItem.SetGlobal();
 begin
 end;
 
-constructor TDbItem.Create(ADbTableInfo: TDbTableInfo);
-begin
-  inherited Create();
-  FDbTableInfo := ADbTableInfo;
-end;
-
 class procedure TDbItem.FillDbTableInfo(ADbTableInfo: TDbTableInfo);
 begin
-  ADbTableInfo.AddField('id', DB_FIELD_TYPE_INTEGER);
-  ADbTableInfo.AddField('name', DB_FIELD_TYPE_STRING);
-  ADbTableInfo.AddField('timestamp', DB_FIELD_TYPE_DATETIME);
-  ADbTableInfo.KeyFieldName := 'id';
 end;
 
 function TDbItem.GetID(): TDbItemID;
@@ -819,7 +681,7 @@ begin
   FID := AValue;
 end;
 
-function TDbItem.GetName(): string;
+function TDbItem.GetName: string;
 begin
   Result := FName;
 end;
@@ -829,42 +691,60 @@ begin
   FName := AValue;
 end;
 
-function TDbItem.GetLinkID(): string;
+procedure TDbItem.InitValues();
+var
+  i: Integer;
 begin
-  if Assigned(DbTableInfo) then
-  begin
-    Result := DbTableInfo.TableName + '~' + IntToStr(FID);
-  end
-  else
-    Result := '~' + IntToStr(FID);
+  SetLength(Self.FValues, Self.DbTableInfo.FieldsCount);
+  for i := 0 to Self.DbTableInfo.FieldsCount - 1 do
+    Self.FValues[i] := '';
 end;
 
 function TDbItem.GetValue(const AName: string): string;
+var
+  i: Integer;
 begin
   if AName = 'id' then
     Result := IntToStr(FID)
-  else if AName = 'timestamp' then
-    Result := DateTimeToStr(self.Timestamp)
+  //else if AName = 'timestamp' then
+  //  Result := DateTimeToStr(self.Timestamp)
   else if AName = 'name' then
     Result := FName
   else
-    Result := '';
+  begin
+    if Length(Self.FValues) = 0 then
+      InitValues();
+    i := Self.DbTableInfo.GetFieldIndex(AName);
+    if i < 0 then
+      Result := ''
+    else
+      Result := Self.FValues[i];
+  end;
 end;
 
-//function TDbItem.GetDBItem(FName: string): TDBItem;
-//begin
-//  result:=nil;
-//  if FName='id' then result:=self;
-//end;
+function TDbItem.GetValueText(const AName: string): string;
+begin
+  Result := GetValue(AName);
+end;
 
 procedure TDbItem.SetValue(const AName: string; AValue: string);
+var
+  i: Integer;
 begin
   if AName = 'id' then
-    FID := StrToIntDef(AValue, 0)
-  else if AName = 'timestamp' then
-    self.Timestamp := StrToDateTimeDef(AValue, self.Timestamp)
+    FID := StrToInt64Def(AValue, 0)
+  //else if AName = 'timestamp' then
+  //  self.Timestamp := StrToDateTimeDef(AValue, self.Timestamp)
   else if AName = 'name' then
-    FName := AValue;
+    FName := AValue
+  else
+  begin
+    if Length(Self.FValues) = 0 then
+      InitValues();
+    i := Self.DbTableInfo.GetFieldIndex(AName);
+    if i >= 0 then
+      Self.FValues[i] := AValue;
+  end;
 end;
 
 function TDbItem.GetInteger(const AName: string): Integer;
@@ -878,65 +758,62 @@ begin
 end;
 
 // === TDbItemList ===
-constructor TDbItemList.Create(ADbTableInfo: TDbTableInfo; ADbDriver: TDbDriver; AOwnItems: Boolean);
+constructor TDbItemList.Create(ADbTableInfo: TDbTableInfo; AManager: TDbManager);
 begin
-  inherited Create();
+  inherited Create(True);
   FDbTableInfo := ADbTableInfo;
-  FDbDriver := ADbDriver;
-  FOwnItems := AOwnItems;
+  FDbManager := AManager;
 end;
-
-procedure TDbItemList.Notify(Ptr: Pointer; Action: TListNotification);
-begin
-  inherited Notify(Ptr, Action);
-  if (Action = lnDeleted) and FOwnItems then
-    TDbItem(Ptr).Free();
-end;
-
-{function TDbItemList.GetDbItemClass(): TDbItemClass;
-begin
-  Result := DbTableInfo.ItemClass;
-end;  }
 
 procedure TDbItemList.FetchAll();
 begin
-  if Assigned(DbDriver) then
-    DbDriver.GetTable(self);
+  if Assigned(DbManager.DbDriver) then
+    DbManager.DbDriver.GetTable(self);
 end;
 
 procedure TDbItemList.StoreAll();
 begin
-  if Assigned(DbDriver) then
-    DbDriver.SetTable(self);
+  if Assigned(DbManager.DbDriver) then
+    DbManager.DbDriver.SetTable(self);
 end;
 
 function TDbItemList.AddItem(AItem: TDbItem; SetNewID: Boolean = False): Integer;
 begin
   if SetNewID then
   begin
-    AItem.SetID(FDbTableInfo.GetNextItemID());
+    if GlobalUseSnowflakeID then
+      AItem.SetID(GetSnowflakeID())
+    else
+    begin
+      Inc(self.FLastID);
+      AItem.SetID(self.FLastID);
+    end;
   end
   else
   begin
-    FDbTableInfo.UpdateTopItemID(AItem.GetID());
+    if self.FLastID < AItem.GetID then
+      self.FLastID := AItem.GetID;
   end;
-  Result := Add(AItem);
+  AItem.DbTableInfo := FDbTableInfo;
+  Result := self.Add(AItem);
 end;
 
-function TDbItemList.GetItem(AIndex: Integer): TDbItem;
+function TDbItemList.GetItemByIndex(AIndex: Integer): TDbItem;
 begin
-  Result := TDbItem(Get(AIndex));
+  Result := (self.Items[AIndex] as TDbItem);
 end;
 
 function TDbItemList.GetItemByID(ItemID: TDbItemID): TDbItem;
 var
   i: Integer;
 begin
-  for i := 0 to Count - 1 do
+  for i := 0 to self.Count - 1 do
   begin
-    Result := TDbItem(Get(i));
-    if Result.GetID() = ItemID then
+    if (self.Items[i] as TDbItem).GetID = ItemID then
+    begin
+      Result := (self.Items[i] as TDbItem);
       Exit;
+    end;
   end;
   Result := nil;
 end;
@@ -947,21 +824,25 @@ var
 begin
   if Wildcard then
   begin
-    for i := 0 to Count - 1 do
+    for i := 0 to self.Count - 1 do
     begin
-      Result := TDbItem(Get(i));
-      if Pos(ItemName, Result.GetName()) > 0 then
+      if Pos(ItemName, (self.Items[i] as TDbItem).GetName) > 0 then
+      begin
+        Result := (self.Items[i] as TDbItem);
         Exit;
+      end;
     end;
   end
 
   else
   begin
-    for i := 0 to Count - 1 do
+    for i := 0 to self.Count - 1 do
     begin
-      Result := TDbItem(Get(i));
-      if Result.GetName() = ItemName then
+      if (self.Items[i] as TDbItem).GetName = ItemName then
+      begin
+        Result := (self.Items[i] as TDbItem);
         Exit;
+      end;
     end;
   end;
   Result := nil;
@@ -990,27 +871,48 @@ end;
 
 function TDbItemList.NewItem(): TDbItem;
 begin
-  Result := DbTableInfo.ItemClass.Create(DbTableInfo);
+  Result := DbTableInfo.GetDbItemClass().Create();
   AddItem(Result, True);
 end;
 
-// === TDbDriver ===
-constructor TDbDriver.Create();
+function TDbDriver.GetTablesList: TDbTableInfoList;
 begin
-  inherited;
-  FTableInfoList := TDbTableInfoList.Create();
+  Result := DbManager.TableInfoList;
+end;
+
+// === TDbDriver ===
+constructor TDbDriver.Create(AManager: TDbManager);
+begin
+  inherited Create;
+  FDbManager := AManager;
+  FDeletedItems := TList.Create();
 end;
 
 destructor TDbDriver.Destroy();
 begin
   self.Close();
-  FreeAndNil(FTableInfoList);
+  FreeAndNil(FDeletedItems);
   inherited;
 end;
 
 function TDbDriver.GetDbTableInfo(TableName: string): TDbTableInfo;
+var
+  i: Integer;
 begin
-  Result := TableInfoList.GetItemByTableName(TableName);
+  Result := nil;
+  for i := 0 to DbManager.TableInfoList.Count - 1 do
+  begin
+    Result := DbManager.TableInfoList.GetItem(i);
+    if Result.TableName = TableName then
+      Exit;
+  end;
+  Result := nil;
+end;
+
+function TDbDriver.DeleteDBItem(AItem: TDBItem): Boolean;
+begin
+  FDeletedItems.Add(AItem);
+  Result := False;
 end;
 
 // === TDbDriverCSV ===
@@ -1018,6 +920,8 @@ function TDbDriverCSV.Open(ADbName: string): Boolean;
 begin
   self.DbName := ExtractFileName(ADbName);
   self.dbPath := ExtractFileDir(ADbName);
+  if self.dbPath <> '' then
+    ForceDirectories(self.dbPath);
   Result := True;
 end;
 
@@ -1030,18 +934,51 @@ procedure TDbDriverCSV.CheckTable(TableInfo: TDbTableInfo);
 begin
   if TableInfo.Valid then
     Exit;
-  if TableInfoList.IndexOf(TableInfo) >= 0 then
+  if TablesList.IndexOf(TableInfo) >= 0 then
     Exit;
 
   TableInfo.Valid := True;
-  TableInfoList.Add(TableInfo);
+  TablesList.Add(TableInfo);
+end;
+
+function TDbDriverCSV.GetTableFileName(TableInfo: TDbTableInfo): string;
+begin
+  Result := '';
+  if self.dbPath <> '' then
+    Result := IncludeTrailingPathDelimiter(self.dbPath);
+  Result := Result + TableInfo.TableName + '.lst';
+end;
+
+function TDbDriverCSV.ItemToStrCSV(AItem: TDBItem; ASL: TStringList): string;
+var
+  sl: TStringList;
+  i: Integer;
+  s: string;
+begin
+  if Assigned(ASL) then
+    sl := ASL
+  else
+    sl := TStringList.Create();
+  try
+    for i := 0 to AItem.DbTableInfo.FieldsCount - 1 do
+    begin
+      s := AItem.DbTableInfo.GetFieldName(i);
+      sl.Add(AItem.GetValue(s));
+    end;
+    Result := StringReplace(sl.CommaText, #13 + #10, '~>', [rfReplaceAll]);
+  finally
+    if not Assigned(ASL) then
+      sl.Free();
+  end;
 end;
 
 function TDbDriverCSV.GetTable(AItemList: TDbItemList; Filter: string = ''): Boolean;
 var
   sl, vl, fl, cl: TStringList;
-  i, n, m, id: Integer;
+  i, n, m: Integer;
+  id: Int64;
   Item: TDbItem;
+  ot: TDbOperType;
   fn: string;
   FilterOk: Boolean;
 begin
@@ -1049,10 +986,7 @@ begin
   if not Assigned(AItemList) then
     Exit;
   CheckTable(AItemList.DbTableInfo);
-  fn := '';
-  if self.dbPath <> '' then
-    fn := IncludeTrailingPathDelimiter(self.dbPath);
-  fn := fn + AItemList.DbTableInfo.TableName + '.lst';
+  fn := GetTableFileName(AItemList.DbTableInfo);
   if not FileExists(fn) then
     Exit;
 
@@ -1064,7 +998,7 @@ begin
     sl.LoadFromFile(fn);
     fl.CommaText := Filter;
 
-    // ÔÂ‚‡ˇ ÒÚÓÍ‡ - ÒÔËÒÓÍ ÍÓÎÓÌÓÍ!
+    // –ø–µ—Ä–≤–∞—è —Å—Ç—Ä–æ–∫–∞ - —Å–ø–∏—Å–æ–∫ –∫–æ–ª–æ–Ω–æ–∫!
     for i := 0 to sl.Count - 1 do
     begin
       if i = 0 then
@@ -1079,6 +1013,14 @@ begin
         Continue;
       {if vl.Count < AItemList.DbTableInfo.FieldsCount then
         Continue; //!!    }
+      ot := otUpdate;
+      if FEventSourcingMode then
+      begin
+        // –æ–±—Ä–∞–±–æ—Ç–∫–∞ –ø–µ—Ä–≤–æ–≥–æ —Å–∏–º–≤–æ–ª–∞ –ø–µ—Ä–≤–æ–π –∫–æ–ª–æ–Ω–∫–∏
+        if Copy(vl[0], 1, 1) = '-' then
+          ot := otDelete;
+        vl[0] := Copy(vl[0], 2, MaxInt);
+      end;
 
       // check filters
       FilterOk := True;
@@ -1102,10 +1044,19 @@ begin
       if not FilterOk then
         Continue;
       // Create new item
-      id := StrToInt(vl[0]);
+      id := StrToInt64(vl[0]);
       Item := AItemList.GetItemByID(id);
-      if not Assigned(Item) then
-        Item := AItemList.NewItem();
+      if (not Assigned(Item)) and (ot <> otDelete) then
+        Item := AItemList.NewItem()
+      else if Assigned(Item) and (ot = otDelete) then
+      begin
+        // delete item from list
+        AItemList.Extract(Item);
+        FDeletedItems.Add(Item);
+        Continue;
+      end
+      else
+        Continue;
 
       // fill item values
       for n := 0 to cl.Count - 1 do
@@ -1152,16 +1103,15 @@ begin
     for i := 0 to AItemList.Count - 1 do
     begin
       vl.Clear();
-      Item := AItemList.GetItem(i);
-      for n := 0 to AItemList.DbTableInfo.FieldsCount - 1 do
-      begin
-        fn := AItemList.DbTableInfo.GetFieldName(n);
-        vl.Add(Item.GetValue(fn));
-      end;
-      sl.Add(StringReplace(vl.CommaText, #13 + #10, '~>', [rfReplaceAll]));
+      Item := (AItemList[i] as TDbItem);
+      if FEventSourcingMode then
+        fn := ' ' + ItemToStrCSV(Item, vl)
+      else
+        fn := ItemToStrCSV(Item, vl);
+      sl.Add(fn);
     end;
 
-    sl.SaveToFile(IncludeTrailingPathDelimiter(self.dbPath) + AItemList.DbTableInfo.TableName + '.lst');
+    sl.SaveToFile(GetTableFileName(AItemList.DbTableInfo));
     Result := True;
   finally
     vl.Free();
@@ -1169,30 +1119,26 @@ begin
   end;
 end;
 
-function TDbDriverCSV.GetDBItem(const ALinkID: string): TDbItem;
+function TDbDriverCSV.GetDBItem(const AValue: string): TDBItem;
 var
   sTableName, sItemID: string;
   i: Integer;
   TableInfo: TDbTableInfo;
-  ItemList: TDbItemList;
   Filter: string;
 begin
   Result := nil;
-  i := Pos('~', ALinkID);
-  sTableName := Copy(ALinkID, 1, i - 1);
-  sItemID := Copy(ALinkID, i + 1, MaxInt);
+  i := Pos('~', AValue);
+  sTableName := Copy(AValue, 1, i - 1);
+  sItemID := Copy(AValue, i + 1, MaxInt);
   TableInfo := Self.GetDbTableInfo(sTableName);
   if not Assigned(TableInfo) then
     Exit;
 
-  ItemList := TDbItemList.Create(TableInfo, Self);
   Filter := 'id=' + sItemID;
-
-  if not GetTable(ItemList, Filter) then
-    Exit;
-  if ItemList.Count = 0 then
-    Exit;
-  Result := ItemList.GetItem(0);
+  if GetTable(TableInfo.ItemsCache, Filter) then
+  begin
+    Result := TableInfo.ItemsCache.GetItemByID(StrToInt64(sItemID));
+  end;
 end;
 
 function TDbDriverCSV.SetDBItem(AItem: TDBItem): Boolean;
@@ -1200,10 +1146,26 @@ var
   TmpItemList: TDbItemList;
   TmpItem: TDbItem;
   i: Integer;
-  fn: string;
+  fn, s: string;
 begin
   Result := False;
-  TmpItemList := TDbItemList.Create(AItem.DbTableInfo, Self);
+  if LogFileName <> '' then
+  begin
+    s := ' ' + IntToStr(AItem.GetID()) + ',' + IntToStr(DateTimeToInt64(Now()));
+    AppendStrToFile(LogFileName, s + ',' + AItem.DbTableInfo.TableName + sLineBreak);
+  end;
+
+  if FEventSourcingMode then
+  begin
+    // –¥–æ–±–∞–≤–ª–µ–Ω–∏–µ –∏–∑–º–µ–Ω–µ–Ω–∏—è
+    s := ' ' + ItemToStrCSV(AItem) + sLineBreak;
+    fn := GetTableFileName(AItem.DbTableInfo);
+    AppendStrToFile(fn, s);
+    Result := True;
+    Exit;
+  end;
+
+  TmpItemList := TDbItemList.Create(AItem.DbTableInfo, DbManager);
   try
     Self.GetTable(TmpItemList);
     TmpItem := TmpItemList.GetItemByID(AItem.GetID);
@@ -1222,9 +1184,33 @@ begin
   end;
 end;
 
+function TDbDriverCSV.DeleteDBItem(AItem: TDBItem): Boolean;
+var
+  s, sFileName: string;
+begin
+  Result := inherited DeleteDBItem(AItem);
+  sFileName := GetTableFileName(AItem.DbTableInfo);
+  s := '-' + IntToStr(AItem.GetID()) + ',' + IntToStr(DateTimeToInt64(Now()));
+  if FEventSourcingMode then
+  begin
+    // –¥–æ–±–∞–≤–ª–µ–Ω–∏–µ –≤ —Ñ–∞–π–ª —Ç–∞–±–ª–∏—Ü—ã
+    AppendStrToFile(sFileName, s + sLineBreak);
+  end;
+
+  if LogFileName <> '' then
+  begin
+    AppendStrToFile(LogFileName, s + ',' + AItem.DbTableInfo.TableName + sLineBreak);
+  end;
+end;
+
 initialization
 
-LocalDefaultDbModel := TDbModel.Create();
+LocalDefaultDbModel := TDbManager.Create();
+
+GlobalUseSnowflakeID := False;
+SnowflakeIDPrevTime := 0;
+SnowflakeIDPrevSeq := 0;
+SnowflakeIDMachineID := 0;
 
 finalization;
 
