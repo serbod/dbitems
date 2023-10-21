@@ -5,7 +5,7 @@ unit MdUnit;
 interface
 
 uses
-  Classes, SysUtils, DataStorage, DbUnit;
+  Classes, SysUtils, DbUnit, Variants, VarDicts, VarLists, BencodeUnit;
 
 type
 
@@ -19,9 +19,9 @@ type
     function LoadFromFile(): Boolean;
     procedure AfterConstruction(); override;
     procedure BeforeDestruction(); override;
-    function DbTableInfoToStorage(ADbTableInfo: TDbTableInfo): IDataStorage;
+    function DbTableInfoToStorage(ADbTableInfo: TDbTableInfo): Variant;
     function DbTableInfoFromStorage(ADbTableInfo: TDbTableInfo;
-      AStorage: IDataStorage): Boolean;
+      AStorage: Variant): Boolean;
   end;
 
 implementation
@@ -30,14 +30,13 @@ implementation
 
 procedure TMdStorage.SaveToFile();
 var
-  Storage, SubStorage, ItemStorage: IDataStorage;
+  Storage, SubStorage, ItemStorage: Variant;
   i: Integer;
-  Serializer: TDataSerializer;
 begin
   if Filename = '' then
     Exit;
 
-  SubStorage := TDataStorage.Create(stList);
+  SubStorage := VarListCreate;
 
   for i := 0 to DbTableInfoList.Count - 1 do
   begin
@@ -45,50 +44,41 @@ begin
     SubStorage.SetValue(ItemStorage);
   end;
 
-  Storage := TDataStorage.Create(stDictionary);
+  Storage := VarDictCreate;
   Storage.SetValue('DbTableInfoList', 'DataType');
   Storage.SetValue(SubStorage, 'Items');
 
-  Serializer := TDataSerializerBencode.Create();
-  try
-    Serializer.StorageToFile(Storage, Filename);
-  finally
-    FreeAndNil(Serializer);
-  end;
-
+  VariantToFileBencode(Storage, Filename);
 end;
 
 function TMdStorage.LoadFromFile(): Boolean;
 var
-  Storage: IDataStorage;
-  SubStorage, ItemStorage: IDataStorage;
+  Storage: Variant;
+  SubStorage, ItemStorage: Variant;
+  s: string;
   i: Integer;
-  Serializer: TDataSerializer;
   DbTableInfo: TDbTableInfo;
 begin
   Result := False;
   if Filename = '' then
     Exit;
-  Storage := nil;
 
-  Serializer := TDataSerializerBencode.Create();
-  try
-    Storage := Serializer.StorageFromFile(Filename);
-  finally
-    FreeAndNil(Serializer);
-  end;
-
-  if (not Assigned(Storage)) or (Storage.GetString('DataType') <> 'DbTableInfoList') then
+  Storage := VariantFromFileBencode(Filename);
+  s := VarTypeAsText(VarType(Storage));
+  if (not VarIsDict(Storage)) then
+    Exit;
+  s := Storage;
+  if (not VarIsDict(Storage)) or (Storage.DataType <> 'DbTableInfoList') then
     Exit;
 
-  SubStorage := Storage.GetObject('Items');
-  if not Assigned(SubStorage) then
+  SubStorage := Storage.Items;
+  if not VarIsList(SubStorage) then
     Exit;
 
   for i := 0 to SubStorage.GetCount - 1 do
   begin
-    ItemStorage := SubStorage.GetObject(i);
-    DbTableInfo := TDbTableInfo.Create();
+    ItemStorage := SubStorage.GetValue(i);
+    DbTableInfo := TDbTableInfo.Create(nil);
     if DbTableInfoFromStorage(DbTableInfo, ItemStorage) then
     begin
       DbTableInfoList.AddObject(DbTableInfo.TableName, DbTableInfo);
@@ -109,22 +99,22 @@ begin
   inherited BeforeDestruction;
 end;
 
-function TMdStorage.DbTableInfoToStorage(ADbTableInfo: TDbTableInfo): IDataStorage;
+function TMdStorage.DbTableInfoToStorage(ADbTableInfo: TDbTableInfo): Variant;
 var
-  Storage, SubStorage: IDataStorage;
+  Storage, SubStorage: Variant;
   i: Integer;
   TmpField: TDbFieldInfo;
 begin
-  Result := TDataStorage.Create(stDictionary);
+  Result := VarDictCreate;
   if not Assigned(ADbTableInfo) then
     Exit;
 
-  SubStorage := TDataStorage.Create(stList);
+  SubStorage := VarListCreate;
 
   for i := 0 to ADbTableInfo.FieldsCount - 1 do
   begin
     TmpField := ADbTableInfo.Fields[i];
-    Storage := TDataStorage.Create(stDictionary);
+    Storage := VarDictCreate;
     Storage.SetValue(TmpField.FieldName, 'Name');
     Storage.SetValue(TmpField.FieldType, 'Type');
     Storage.SetValue(TmpField.FieldDescription, 'Desc');
@@ -145,32 +135,30 @@ begin
 end;
 
 function TMdStorage.DbTableInfoFromStorage(ADbTableInfo: TDbTableInfo;
-  AStorage: IDataStorage): Boolean;
+  AStorage: Variant): Boolean;
 var
-  SubStorage: IDataStorage;
-  SubStorageItem: IDataStorage;
+  vFieldList, vField: Variant;
   DbField: TDbFieldInfo;
   i: Integer;
 begin
   Result := False;
-  if (not Assigned(AStorage))
-  or (AStorage.GetStorageType <> stDictionary)
-  or (AStorage.GetString('DataType') <> 'DbTableInfo') then
+  NullStrictConvert := False;
+  if (not VarIsDict(AStorage))
+  or (AStorage.DataType <> 'DbTableInfo') then
     Exit;
-  ADbTableInfo.DBName := AStorage.GetString('DBName');
-  ADbTableInfo.TableName := AStorage.GetString('TableName');
-  ADbTableInfo.TableDescription := AStorage.GetString('TableDesc');
-  ADbTableInfo.KeyFieldName := AStorage.GetString('KeyFieldName');
-  SubStorage := AStorage.GetObject('Fields');
-  if Assigned(SubStorage) then
+  ADbTableInfo.DBName := AStorage.DBName;
+  ADbTableInfo.TableName := AStorage.TableName;
+  ADbTableInfo.TableDescription := AStorage.TableDesc;
+  ADbTableInfo.KeyFieldName := AStorage.KeyFieldName;
+  vFieldList := AStorage.Fields;
+  if VarIsList(vFieldList) then
   begin
-    for i := 0 to SubStorage.GetCount - 1 do
+    for i := 0 to vFieldList.GetCount - 1 do
     begin
-      SubStorageItem := SubStorage.GetObject(i);
-      DbField := ADbTableInfo.AddField(SubStorageItem.GetString('Name'),
-        SubStorageItem.GetString('Type'));
-      DbField.FieldDescription := SubStorageItem.GetString('Desc');
-      DbField.IsIndexed := SubStorageItem.GetBool('Indexed');
+      vField := vFieldList.GetValue(i);
+      DbField := ADbTableInfo.AddField(vField.Name, vField.GetValue('Type'));
+      DbField.FieldDescription := vField.Desc;
+      DbField.IsIndexed := vField.GetValue('Indexed');
     end;
   end;
   Result := True;

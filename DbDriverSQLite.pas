@@ -1,11 +1,11 @@
-unit DbDriverSqlite;
+unit DbDriverSQLite;
 
 {$mode objfpc}{$H+}
 
 interface
 
 uses
-  Classes, SysUtils, DbUnit, sqldb, sqlite3conn;
+  Classes, SysUtils, DbUnit, ZConnection, ZDataset;
 
 type
 
@@ -13,13 +13,13 @@ type
 
   TDbDriverSQLite = class(TDbDriver)
   private
-    db: TSQLite3Connection;
+    db: TZConnection;
     Active: Boolean;
     procedure CheckTable(TableInfo: TDbTableInfo);
   protected
     procedure DebugSQL(AMsg: string); virtual;
   public
-    constructor Create();
+    constructor Create(AManager: TDbManager);
     //destructor Destroy(); override;
     function Open(ADbName: string): Boolean; override;
     function Close(): Boolean; override;
@@ -27,15 +27,88 @@ type
     function SetTable(AItemList: TDbItemList; Filter: string = ''): Boolean; override;
     function GetDBItem(const AValue: string): TDBItem; override;
     function SetDBItem(AItem: TDBItem): Boolean; override;
+    function DeleteDBItem(AItem: TDBItem): Boolean; override;
   end;
 
 
 implementation
 
-// === TDbDriverSQLite ===
-constructor TDbDriverSQLite.Create();
+function DisarmStrToHex(const AStr: string): string;
+var
+  i: Integer;
 begin
-  inherited Create();
+  Result := 'X''';
+  for i := 1 to Length(AStr) do
+  begin
+    Result := Result + IntToHex(Ord(AStr[i]), 2);
+  end;
+  Result := Result + '''';
+end;
+
+function DisarmStr(const AStr: string): string;
+begin
+  if (Pos('\r', AStr) > 0) or (Pos('\n', AStr) > 0) then
+     Result := DisarmStrToHex(AStr)
+  else
+  begin
+    Result := '''' + StringReplace(AStr, '''', '''''', [rfReplaceAll]) + '''';
+    if Pos(#13, Result) > 0 then
+    begin
+      Result := 'replace(' + StringReplace(Result, #13, '\r', [rfReplaceAll]) + ',''\r'',char(13))';
+    end;
+    if Pos(#10, Result) > 0 then
+    begin
+      Result := 'replace(' + StringReplace(Result, #10, '\n', [rfReplaceAll]) + ',''\n'',char(10))';
+    end;
+  end;
+end;
+
+function StreamToDbStr(AStream: TStream): string;
+var
+  b: Byte;
+  n, nLen, nPos: Integer;
+  //s: string;
+begin
+  nLen := 3 + (AStream.Size * 2);
+  SetLength(Result, nLen);
+  Result[1] := 'X';
+  Result[2] := '''';
+  AStream.Position := 0;
+  // read to second half of result
+  nPos := AStream.Size + 3;
+  AStream.Read(Result[nPos], AStream.Size);
+  n := 3;
+  while n < nLen do
+  begin
+    //AStream.Read(b, SizeOf(b));
+    //s := IntToHex(b, 2);
+    b := Ord(Result[nPos]);
+    if (b and $0F) < $A then
+      Result[n+1] := Chr((b and $0F) + $30)  // Ord('0')
+    else
+      Result[n+1] := Chr((b and $0F) + $37); // Ord('A') - $A
+
+    b := b shr 4;
+    if (b and $0F) < $A then
+      Result[n] := Chr((b and $0F) + $30)
+    else
+      Result[n] := Chr((b and $0F) + $37);
+
+    Inc(n, 2);
+    Inc(nPos);
+  end;
+  Result[n] := '''';
+end;
+
+function DateStr(const ADate: TDateTime): string;
+begin
+  Result := '''' + FormatDateTime('YYYY-MM-DD HH:NN:SS', ADate) + '''';
+end;
+
+// === TDbDriverSQLite ===
+constructor TDbDriverSQLite.Create(AManager: TDbManager);
+begin
+  inherited Create(AManager);
   self.Active := False;
 end;
 
@@ -49,8 +122,8 @@ begin
     Exit;
   if TableInfo.Valid then
     Exit;
-  if Self.TableInfoList.IndexOf(TableInfo) >= 0 then
-    Exit;
+  //if Self.TablesList.IndexOf(TableInfo) >= 0 then
+  //  Exit;
 
   // get table info
   //sql:='SELECT * FROM sqlite_master WHERE type=''table'' and name='''+TableInfo.TableName+'''';
@@ -59,7 +132,7 @@ begin
 
   sl := TStringList.Create();
   try
-    DB.GetFieldNames(TableInfo.TableName, sl);
+    DB.GetColumnNames(TableInfo.TableName, '', sl);
 
     if sl.Count <= 0 then
     begin
@@ -70,7 +143,7 @@ begin
         st := TableInfo.Types[i];
         if Length(s) > 0 then
           s := s + ',';
-        s := s + '''' + sn + '''';
+        s := s + QuotedStr(sn);
         if sn = 'id' then
         begin
           s := s + ' INTEGER PRIMARY KEY NOT NULL';
@@ -88,7 +161,7 @@ begin
         else if st[1] = 'L' then
           s := s + ' INTEGER NOT NULL';
       end;
-      sql := 'CREATE TABLE ''' + TableInfo.TableName + ''' (' + s + ')';
+      sql := 'CREATE TABLE ' + QuotedStr(TableInfo.TableName) + ' (' + s + ')';
       DebugSQL(sql);
       try
         DB.ExecuteDirect(sql);
@@ -101,7 +174,8 @@ begin
   end;
 
   TableInfo.Valid := True;
-  Self.TableInfoList.Add(TableInfo);
+  if Self.TablesList.IndexOf(TableInfo) < 0 then
+    Self.TablesList.Add(TableInfo);
 end;
 
 procedure TDbDriverSQLite.DebugSQL(AMsg: string);
@@ -116,10 +190,17 @@ begin
   Result := True;
   if Assigned(db) then
     FreeAndNil(db);
-  db := TSQLite3Connection.Create(nil);
+  if ExtractFileExt(ADbName) = '' then
+    ADbName := ADbName + '.db3';
+
+  db := TZConnection.Create(nil);
   try
-    DB.DatabaseName := ADbName + '.sqlite';
-    DB.Open();
+    db.Protocol := 'sqlite-3';
+    {$ifndef CPU32}
+    db.LibraryLocation := 'SQLite3_64.dll';
+    {$endif}
+    db.Database := ADbName;
+    db.Connect;
   except
     FreeAndNil(db);
     Result := False;
@@ -130,24 +211,23 @@ end;
 function TDbDriverSQLite.Close(): Boolean;
 begin
   Result := True;
-  TableInfoList.Clear();
+  TablesList.Clear();
   if not Active then
     Exit;
   if not Assigned(db) then
     Exit;
-  DB.Close();
+  DB.Disconnect;
   FreeAndNil(db);
 end;
 
 function TDbDriverSQLite.GetTable(AItemList: TDbItemList; Filter: string = ''): Boolean;
 var
   //rs: IMkSqlStmt;
-  Query: TSQLQuery;
+  Query: TZReadOnlyQuery;
   i, n, m: Integer;
   Item: TDbItem;
   fn, sql: string;
   fl: TStringList;
-  FilterOk: Boolean;
 begin
   Result := False;
   if not Active then
@@ -163,7 +243,7 @@ begin
   try
     fl.CommaText := Filter;
 
-    sql := 'SELECT * FROM "' + AItemList.DbTableInfo.TableName + '"';
+    sql := 'SELECT * FROM ' + QuotedStr(AItemList.DbTableInfo.TableName);
     // filters
     if fl.Count > 0 then
       sql := sql + ' WHERE ';
@@ -171,7 +251,7 @@ begin
     begin
       if m > 0 then
         sql := sql + ' AND ';
-      sql := sql + '"' + fl.Names[m] + '"="' + fl.ValueFromIndex[m] + '"';
+      sql := sql + QuotedStr(fl.Names[m]) + '=' + QuotedStr(fl.ValueFromIndex[m]);
     end;
   finally
     FreeAndNil(fl);
@@ -179,9 +259,9 @@ begin
 
   DebugSQL(sql);
 
-  Query := TSQLQuery.Create(nil);
+  Query := TZReadOnlyQuery.Create(nil);
   try
-    Query.DataBase := db;
+    Query.Connection := db;
     //rs:=db.Exec(sql);
     Query.SQL.Text := sql;
     Query.Open();
@@ -220,17 +300,18 @@ begin
   for i := 0 to AItemList.Count - 1 do
   begin
     vl := '';
-    Item := AItemList.GetItem(i);
+    Item := (AItemList[i] as TDbItem);
     for n := 0 to AItemList.DbTableInfo.FieldsCount - 1 do
     begin
       fn := AItemList.DbTableInfo.FieldNames[n]; // field name
       iv := Item.GetValue(fn);                 // field value
+      iv := QuotedStr(iv);
       if n > 0 then
         vl := vl + ',';
-      vl := vl + '"' + iv + '"';
+      vl := vl + iv;
       //vl:=vl+fn+'='''+iv+'''';
     end;
-    sql := 'INSERT OR REPLACE INTO "' + AItemList.DbTableInfo.TableName + '" VALUES (' + vl + ')';
+    sql := 'INSERT OR REPLACE INTO ' + QuotedStr(AItemList.DbTableInfo.TableName) + ' VALUES (' + vl + ')';
     DebugSQL(sql);
     //sql:='UPDATE '+AItemList.DbTableInfo.TableName+' SET '+vl+' WHERE ROWID='+IntToStr(Item.ID);
     try
@@ -246,7 +327,7 @@ var
   sTableName, sItemID, fn, sql: string;
   i: Integer;
   TableInfo: TDbTableInfo;
-  Query: TSQLQuery;
+  Query: TZReadOnlyQuery;
 begin
   Result := nil;
   if not Assigned(db) then
@@ -258,17 +339,17 @@ begin
   if not Assigned(TableInfo) then
     Exit;
 
-  sql := 'SELECT * FROM ' + TableInfo.TableName + ' WHERE id="' + sItemID + '"';
+  sql := 'SELECT * FROM ' + TableInfo.TableName + ' WHERE id=' + QuotedStr(sItemID);
   DebugSQL(sql);
 
-  Query := TSQLQuery.Create(nil);
+  Query := TZReadOnlyQuery.Create(nil);
   try
-    Query.DataBase := db;
+    Query.Connection := db;
     Query.SQL.Text := sql;
     Query.Open();
     while not Query.EOF do
     begin
-      Result := TDbItem.Create(TableInfo);
+      Result := TDbItem.Create();
       for i := 0 to TableInfo.FieldsCount - 1 do
       begin
         fn := TableInfo.FieldNames[i];  // field name
@@ -285,7 +366,6 @@ end;
 function TDbDriverSQLite.SetDBItem(AItem: TDBItem): Boolean;
 var
   n: Integer;
-  Item: TDbItem;
   TableInfo: TDbTableInfo;
   fn, iv, vl, sql: string;
 begin
@@ -305,10 +385,10 @@ begin
     iv := AItem.GetValue(fn);
     if n > 0 then
       vl := vl + ',';
-    vl := vl + '"' + iv + '"';
+    vl := vl + QuotedStr(iv);
     //vl:=vl+fn+'='''+iv+'''';
   end;
-  sql := 'INSERT OR REPLACE INTO "' + TableInfo.TableName + '" VALUES (' + vl + ')';
+  sql := 'INSERT OR REPLACE INTO ' + QuotedStr(TableInfo.TableName) + ' VALUES (' + QuotedStr(vl) + ')';
   DebugSQL(sql);
   //sql:='UPDATE '+AItemList.DbTableInfo.TableName+' SET '+vl+' WHERE ROWID='+IntToStr(Item.ID);
   try
@@ -317,6 +397,20 @@ begin
 
   finally
   end;
+end;
+
+function TDbDriverSQLite.DeleteDBItem(AItem: TDBItem): Boolean;
+var
+  TableInfo: TDbTableInfo;
+  sql: string;
+begin
+  Result := False;
+  if not Assigned(AItem) then Exit;
+  TableInfo := AItem.DbTableInfo;
+  sql := Format('DELETE FROM %s WHERE %s = %s', [TableInfo.TableName, TableInfo.KeyFieldName, IntToStr(AItem.GetID())]);
+  DebugSQL(sql);
+  DB.ExecuteDirect(sql);
+  Result := inherited DeleteDBItem(AItem);
 end;
 
 

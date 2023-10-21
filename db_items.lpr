@@ -7,8 +7,8 @@ uses
   cthreads,
   {$ENDIF}{$ENDIF}
   Interfaces, // this includes the LCL widgetset
-  Forms, MdEditForm, DbDriverSqlite, MdUnit, DataStorage, EditTableFieldFrame,
-  EditTableFrame
+  Forms, zcomponent, MdEditForm, DbDriverSqlite, MdUnit, DataStorage,
+  EditTableFieldFrame, EditTableFrame
   { you can add units after this };
 
 {$R *.res}

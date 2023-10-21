@@ -1,11 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <CONFIG>
   <ProjectOptions>
-    <Version Value="10"/>
+    <Version Value="12"/>
     <PathDelim Value="\"/>
     <General>
+      <Flags>
+        <CompatibilityMode Value="True"/>
+      </Flags>
       <SessionStorage Value="InProjectDir"/>
-      <MainUnit Value="0"/>
       <Title Value="db_items"/>
       <ResourceType Value="res"/>
       <UseXPManifest Value="True"/>
@@ -21,13 +23,14 @@
       <Version Value="2"/>
     </PublishOptions>
     <RunParams>
-      <local>
-        <FormatVersion Value="1"/>
-      </local>
+      <FormatVersion Value="2"/>
+      <Modes Count="1">
+        <Mode0 Name="default"/>
+      </Modes>
     </RunParams>
     <RequiredPackages Count="2">
       <Item1>
-        <PackageName Value="SQLDBLaz"/>
+        <PackageName Value="zcomponent"/>
       </Item1>
       <Item2>
         <PackageName Value="LCL"/>
@@ -47,9 +50,8 @@
         <UnitName Value="MdEditForm"/>
       </Unit1>
       <Unit2>
-        <Filename Value="dbdriversqlite.pas"/>
+        <Filename Value="DbDriverSQLite.pas"/>
         <IsPartOfProject Value="True"/>
-        <UnitName Value="DbDriverSqlite"/>
       </Unit2>
       <Unit3>
         <Filename Value="mdunit.pas"/>
@@ -57,9 +59,8 @@
         <UnitName Value="MdUnit"/>
       </Unit3>
       <Unit4>
-        <Filename Value="datastorage.pas"/>
+        <Filename Value="DataStorage.pas"/>
         <IsPartOfProject Value="True"/>
-        <UnitName Value="DataStorage"/>
       </Unit4>
       <Unit5>
         <Filename Value="edittablefieldframe.pas"/>
@@ -70,12 +71,11 @@
         <UnitName Value="EditTableFieldFrame"/>
       </Unit5>
       <Unit6>
-        <Filename Value="edittableframe.pas"/>
+        <Filename Value="EditTableFrame.pas"/>
         <IsPartOfProject Value="True"/>
         <ComponentName Value="FrameEditTable"/>
         <HasResources Value="True"/>
         <ResourceBaseClass Value="Frame"/>
-        <UnitName Value="EditTableFrame"/>
       </Unit6>
     </Units>
   </ProjectOptions>
@@ -90,6 +90,9 @@
       <UnitOutputDirectory Value="lib\$(TargetCPU)-$(TargetOS)"/>
     </SearchPaths>
     <Linking>
+      <Debugging>
+        <DebugInfoType Value="dsDwarf3"/>
+      </Debugging>
       <Options>
         <Win32>
           <GraphicApplication Value="True"/>

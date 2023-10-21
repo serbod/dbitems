@@ -1,0 +1,73 @@
+object FrameDbBrowser: TFrameDbBrowser
+  Left = 0
+  Height = 376
+  Top = 0
+  Width = 577
+  ClientHeight = 376
+  ClientWidth = 577
+  TabOrder = 0
+  DesignLeft = 267
+  DesignTop = 216
+  object panCenter: TPanel
+    Left = 0
+    Height = 376
+    Top = 0
+    Width = 577
+    Align = alClient
+    BevelOuter = bvNone
+    ClientHeight = 376
+    ClientWidth = 577
+    TabOrder = 0
+    object splH1: TSplitter
+      Cursor = crVSplit
+      Left = 0
+      Height = 3
+      Top = 145
+      Width = 577
+      Align = alTop
+      ResizeAnchor = akTop
+    end
+    object tvDbTree: TTreeView
+      Left = 0
+      Height = 145
+      Top = 0
+      Width = 577
+      Align = alTop
+      HotTrack = True
+      Indent = 19
+      PopupMenu = pmItems
+      ReadOnly = True
+      TabOrder = 0
+      OnChange = tvDbTreeChange
+      OnDblClick = tvDbTreeDblClick
+      Options = [tvoAutoItemHeight, tvoHideSelection, tvoHotTrack, tvoKeepCollapsedNodes, tvoReadOnly, tvoShowButtons, tvoShowLines, tvoShowRoot, tvoToolTips, tvoThemedDraw]
+    end
+    object lvDbTable: TListView
+      Left = 0
+      Height = 228
+      Top = 148
+      Width = 577
+      Align = alClient
+      Columns = <>
+      GridLines = True
+      OwnerData = True
+      ReadOnly = True
+      RowSelect = True
+      TabOrder = 1
+      ViewStyle = vsReport
+      OnData = lvDbTableData
+    end
+  end
+  object pmItems: TPopupMenu
+    Left = 258
+    Top = 75
+    object miRefresh: TMenuItem
+      Caption = 'Refresh'
+      OnClick = ToolButtonClick
+    end
+    object miEditTable: TMenuItem
+      Caption = 'Edit table'
+      OnClick = ToolButtonClick
+    end
+  end
+end

@@ -19,7 +19,7 @@ const
   DB_FIELD_TYPE_INTEGER  = 'I';  // +-0123456789
   DB_FIELD_TYPE_NUMBER   = 'N';  // +-.E0123456789
   DB_FIELD_TYPE_STRING   = 'S';
-  DB_FIELD_TYPE_DATETIME = 'D';  //
+  DB_FIELD_TYPE_DATETIME = 'D';  // YYYYMMDDHHNNSS
   DB_FIELD_TYPE_LINK     = 'L';  // table_name~id
 
 type
@@ -122,6 +122,8 @@ type
     function GetFieldIndex(const AName: string): Integer;
     // Return 'name' field info
     function GetNameField(): TDbFieldInfo;
+    // Return field info by field name
+    function GetFieldByName(const AName: string): TDbFieldInfo;
     // All created/readed items of same type
     property ItemsCache: TDbItemList read FItemsCache write FItemsCache;
   end;
@@ -187,8 +189,11 @@ type
     // доступ к значению поля по его имени
     property Values[const AName: string]: string read GetValue write SetValue; default;
 
-    function GetInteger(const AName: string): Integer;
-    procedure SetInteger(const AName: string; Value: Integer);
+    function GetValueAsInteger(const AName: string): Integer;
+    procedure SetValueAsInteger(const AName: string; AValue: Integer);
+
+    function GetValueAsID(const AName: string): TDbItemID;
+    procedure SetValueAsID(const AName: string; AValue: TDbItemID);
   end;
 
   TDbManager = class;
@@ -222,16 +227,27 @@ type
     property DbManager: TDbManager read FDbManager;
   end;
 
-  { Database model, contains database description, all tables info }
+  TDbItemEvent = procedure(ADbItem: TDbItem) of object;
+  TDbItemFilterEvent = procedure(ADbItem: TDbItem; out IsAllowed: Boolean) of object;
+  TDbItemSelectEvent = procedure(AItemList: TDbItemList; var AItem: TDBItem) of object;
+
+  { Database manager, contains database description, all tables info }
   { TDbManager }
 
   TDbManager = class(TObject)
   private
     FTableInfoList: TDbTableInfoList;
+    FDeletedItems: TList;
+
+    FOnItemUpdate: TDbItemEvent;
+    FOnItemDelete: TDbItemEvent;
+    FOnItemSelect: TDbItemSelectEvent;
   protected
     FDbDriver: TDbDriver;
   public
     DbName: string;
+    AutoCommit: Boolean;
+
     constructor Create();
     destructor Destroy(); override;
 
@@ -242,11 +258,25 @@ type
     // Возвращает DBItem по значению вида Table_name~id
     function GetDBItem(const AValue: string): TDBItem; virtual;
     function SetDBItem(AItem: TDBItem): Boolean; virtual;
+    function NewDBItem(const ATableName: string): TDBItem;
+    // удаляет элемент из базы данных и добавляет в список удаленных
+    function DeleteDBItem(AItem: TDBItem): Boolean; virtual;
+
+    // Интерактивный выбор элемента из списка, возвращает True при успехе
+    // AItem - элемент для позиционирования, после вызова - выбраный элемент
+    function SelectItemFromList(AItemList: TDbItemList; var AItem: TDBItem): Boolean; virtual;
+
 
     // Список описаний таблиц TDbTableInfo
     property TableInfoList: TDbTableInfoList read FTableInfoList;
+    property DeletedItems: TList read FDeletedItems;
 
     property DbDriver: TDbDriver read FDbDriver write FDbDriver;
+
+    property OnItemUpdate: TDbItemEvent read FOnItemUpdate write FOnItemUpdate;
+    property OnItemDelete: TDbItemEvent read FOnItemDelete write FOnItemDelete;
+    // вызывается при интерактивном выборе элемента
+    property OnItemSelect: TDbItemSelectEvent read FOnItemSelect write FOnItemSelect;
   end;
 
   // Драйвер базы данных - для доступа к хранилищу данных
@@ -257,7 +287,6 @@ type
   TDbDriver = class(TObject)
   private
     FOnDebugSQL: TGetStrProc;
-    FDeletedItems: TList;
     FDbManager: TDbManager;
     function GetTablesList: TDbTableInfoList;
   public
@@ -300,6 +329,7 @@ type
     procedure CheckTable(TableInfo: TDbTableInfo);
     function GetTableFileName(TableInfo: TDbTableInfo): string;
     function ItemToStrCSV(AItem: TDBItem; ASL: TStringList = nil): string;
+    procedure SetEventSourcingMode(AValue: Boolean);
   public
     LogFileName: string; // if defined, write tables change log
 
@@ -310,8 +340,11 @@ type
     function GetDBItem(const AValue: string): TDBItem; override;
     function SetDBItem(AItem: TDBItem): Boolean; override;
     function DeleteDBItem(AItem: TDBItem): Boolean; override;
-
-    property EventSourcingMode: Boolean read FEventSourcingMode;
+    // Режим хранения данных как событий. Изменение и удаление данных
+    // добавляются как новые элементы. Применимо для малого числа элементов или
+    // данных без изменений и удалений. Потому что для получения актуального
+    // состояния необходимо вычитывать все данные
+    property EventSourcingMode: Boolean read FEventSourcingMode write SetEventSourcingMode;
   end;
 
 var
@@ -358,7 +391,7 @@ begin
   //dt := Now() + (GetLocalTimeOffset / MinsPerDay);
   ts := DateTimeToTimeStamp(Now());
   ts.Date := ts.Date - DateDelta - UnixDateDelta; // 0001 -> 1899 -> 1970
-  UTime := (ts.Date * MSecsPerDay) + ts.Time;
+  UTime := (Int64(ts.Date) * MSecsPerDay) + ts.Time;
 
   if UTime <> SnowflakeIDPrevTime then
   begin
@@ -410,15 +443,15 @@ var
   nh, nn, ns, nms: Word;
 begin
   ny := AValue div 10000000000;
-  Dec(AValue, ny);
+  Dec(AValue, (Int64(ny) * 10000000000));
   nm := AValue div 100000000;
-  Dec(AValue, nm);
+  Dec(AValue, (Int64(nm) * 100000000));
   nd := AValue div 1000000;
-  Dec(AValue, nd);
+  Dec(AValue, (Int64(nd) * 1000000));
   nh := AValue div 10000;
-  Dec(AValue, nh);
+  Dec(AValue, (Int64(nh) * 10000));
   nn := AValue div 100;
-  Dec(AValue, nn);
+  Dec(AValue, (Int64(nn) * 100));
   ns := AValue;
   nms := 0;
   Result := EncodeDate(ny, nm, nd) + EncodeTime(nh, nn, ns, nms);
@@ -428,6 +461,7 @@ function AppendStrToFile(AFileName, AStr: string): Boolean;
 var
   fs: TFileStream;
 begin
+  Result := False;
   if AStr = '' then Exit;
   if FileExists(AFileName) then
     fs := TFileStream.Create(AFileName, fmOpenWrite + fmShareDenyNone)
@@ -436,6 +470,7 @@ begin
   try
     fs.Seek(0, soFromEnd);
     fs.Write(AStr[1], Length(AStr) * SizeOf(Char));
+    Result := True;
   finally
     fs.Free();
   end;
@@ -447,10 +482,29 @@ constructor TDbManager.Create;
 begin
   inherited;
   FTableInfoList := TDbTableInfoList.Create();
+  FDeletedItems := TList.Create();
 end;
 
 destructor TDbManager.Destroy;
+var
+  i: Integer;
 begin
+  if Assigned(FDbDriver) then
+    FreeAndNil(FDbDriver);
+
+  // clear tables caches
+  for i := 0 to FTableInfoList.Count - 1 do
+  begin
+    FTableInfoList.GetItem(i).ItemsCache.Free();
+    FTableInfoList.GetItem(i).ItemsCache := nil;
+  end;
+  // clear deleted items
+  for i := FDeletedItems.Count - 1 downto 0 do
+  begin
+    TDbItem(FDeletedItems[i]).Free();
+  end;
+
+  FreeAndNil(FDeletedItems);
   FreeAndNil(FTableInfoList);
   inherited Destroy;
 end;
@@ -486,19 +540,86 @@ begin
 end;
 
 function TDbManager.GetDBItem(const AValue: string): TDBItem;
+var
+  TmpTableInfo: TDbTableInfo;
+  n: Integer;
+  nID: Int64;
+  sTableName: string;
 begin
-  if Assigned(DbDriver) then
-    Result := DbDriver.GetDBItem(AValue)
-  else
-    Result := nil;
+  Result := nil;
+  // поиск в кеше
+  n := Pos('~', AValue);
+  sTableName := Copy(AValue, 1, n - 1);
+  nID := StrToInt64Def(Copy(AValue, n + 1, MaxInt), 0);
+  if nID = 0 then Exit;
+  TmpTableInfo := GetDbTableInfo(sTableName);
+  if Assigned(TmpTableInfo) then
+  begin
+    Result := TmpTableInfo.ItemsCache.GetItemByID(nID);
+  end;
+
+  // чтение из БД
+  if not Assigned(Result) and Assigned(DbDriver) then
+    Result := DbDriver.GetDBItem(AValue);
 end;
 
 function TDbManager.SetDBItem(AItem: TDBItem): Boolean;
 begin
+  if Assigned(OnItemUpdate) then OnItemUpdate(Aitem);
   if Assigned(DbDriver) then
-    Result := DbDriver.SetDBItem(AItem)
+  begin
+    Result := DbDriver.SetDBItem(AItem);
+    if Result and AutoCommit then
+    begin
+      if Assigned(AItem.DbTableInfo.ItemsCache) then
+        AItem.DbTableInfo.ItemsCache.StoreAll();
+    end;
+  end
   else
     Result := False;
+end;
+
+function TDbManager.NewDBItem(const ATableName: string): TDBItem;
+var
+  TmpTableInfo: TDbTableInfo;
+begin
+  Result := nil;
+  TmpTableInfo := GetDbTableInfo(ATableName);
+  if Assigned(TmpTableInfo) then
+  begin
+    Result := TmpTableInfo.ItemsCache.NewItem();
+  end;
+end;
+
+function TDbManager.DeleteDBItem(AItem: TDBItem): Boolean;
+begin
+  if Assigned(OnItemDelete) then OnItemDelete(Aitem);
+  FDeletedItems.Add(AItem);
+  if Assigned(DbDriver) then
+  begin
+    Result := DbDriver.DeleteDBItem(AItem);
+    if Result and AutoCommit then
+    begin
+      if Assigned(AItem.DbTableInfo.ItemsCache) then
+      begin
+        // item removed from cache in driver
+        AItem.DbTableInfo.ItemsCache.StoreAll();
+      end;
+    end;
+  end
+  else
+    Result := False;
+end;
+
+function TDbManager.SelectItemFromList(AItemList: TDbItemList;
+  var AItem: TDBItem): Boolean;
+begin
+  Result := False;
+  if Assigned(OnItemSelect) then
+  begin
+    OnItemSelect(AItemList, AItem);
+    Result := Assigned(AItem);
+  end;
 end;
 
 { TDbFieldInfoList }
@@ -650,6 +771,11 @@ begin
   Result := Fields[FNameFieldIndex];
 end;
 
+function TDbTableInfo.GetFieldByName(const AName: string): TDbFieldInfo;
+begin
+  Result := GetField(GetFieldIndex(AName));
+end;
+
 // === TDbItem ===
 procedure TDbItem.GetLocal();
 begin
@@ -747,14 +873,24 @@ begin
   end;
 end;
 
-function TDbItem.GetInteger(const AName: string): Integer;
+function TDbItem.GetValueAsInteger(const AName: string): Integer;
 begin
   Result := StrToIntDef(self.GetValue(AName), 0);
 end;
 
-procedure TDbItem.SetInteger(const AName: string; Value: Integer);
+procedure TDbItem.SetValueAsInteger(const AName: string; AValue: Integer);
 begin
-  self.SetValue(AName, IntToStr(Value));
+  self.SetValue(AName, IntToStr(AValue));
+end;
+
+function TDbItem.GetValueAsID(const AName: string): TDbItemID;
+begin
+  Result := StrToInt64Def(self.GetValue(AName), 0);
+end;
+
+procedure TDbItem.SetValueAsID(const AName: string; AValue: TDbItemID);
+begin
+  self.SetValue(AName, IntToStr(AValue));
 end;
 
 // === TDbItemList ===
@@ -806,10 +942,12 @@ end;
 function TDbItemList.GetItemByID(ItemID: TDbItemID): TDbItem;
 var
   i: Integer;
+  n: Int64;
 begin
   for i := 0 to self.Count - 1 do
   begin
-    if (self.Items[i] as TDbItem).GetID = ItemID then
+    n := (self.Items[i] as TDbItem).GetID;
+    if n = ItemID then
     begin
       Result := (self.Items[i] as TDbItem);
       Exit;
@@ -885,13 +1023,11 @@ constructor TDbDriver.Create(AManager: TDbManager);
 begin
   inherited Create;
   FDbManager := AManager;
-  FDeletedItems := TList.Create();
 end;
 
 destructor TDbDriver.Destroy();
 begin
   self.Close();
-  FreeAndNil(FDeletedItems);
   inherited;
 end;
 
@@ -911,8 +1047,12 @@ end;
 
 function TDbDriver.DeleteDBItem(AItem: TDBItem): Boolean;
 begin
-  FDeletedItems.Add(AItem);
   Result := False;
+  if Assigned(AItem.DbTableInfo.ItemsCache) then
+  begin
+    AItem.DbTableInfo.ItemsCache.Extract(AItem);
+    Result := True;
+  end;
 end;
 
 // === TDbDriverCSV ===
@@ -970,6 +1110,12 @@ begin
     if not Assigned(ASL) then
       sl.Free();
   end;
+end;
+
+procedure TDbDriverCSV.SetEventSourcingMode(AValue: Boolean);
+begin
+  if FEventSourcingMode = AValue then Exit;
+  FEventSourcingMode := AValue;
 end;
 
 function TDbDriverCSV.GetTable(AItemList: TDbItemList; Filter: string = ''): Boolean;
@@ -1052,7 +1198,7 @@ begin
       begin
         // delete item from list
         AItemList.Extract(Item);
-        FDeletedItems.Add(Item);
+        DbManager.DeletedItems.Add(Item);
         Continue;
       end
       else
@@ -1095,6 +1241,8 @@ begin
     for n := 0 to AItemList.DbTableInfo.FieldsCount - 1 do
     begin
       fn := AItemList.DbTableInfo.GetFieldName(n);
+      if FEventSourcingMode then
+        fn := ' ' + fn;
       vl.Add(fn);
     end;
     sl.Add(vl.CommaText);
