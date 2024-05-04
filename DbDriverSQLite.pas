@@ -1,11 +1,18 @@
 unit DbDriverSQLite;
+(*
+SQLite driver for DbUnit
 
+Usage example:
+  GlobalDbManager.DbDriver := TDbDriverSQLite.Create(GlobalDbManager);
+  (GlobalDbManager.DbDriver as TDbDriverSQLite).OnDebugSQL := @OnDebugSQLHandler;
+  GlobalDbManager.DbDriver.Open(DB_PATH);
+*)
 {$mode objfpc}{$H+}
 
 interface
 
 uses
-  Classes, SysUtils, DbUnit, ZConnection, ZDataset;
+  Classes, SysUtils, DbUnit, ZConnection, ZDataset, Variants;
 
 type
 
@@ -15,9 +22,11 @@ type
   private
     db: TZConnection;
     Active: Boolean;
-    procedure CheckTable(TableInfo: TDbTableInfo);
+    procedure CheckTable(ATableInfo: TDbTableInfo);
   protected
     procedure DebugSQL(AMsg: string); virtual;
+    procedure CreateTable(ATableInfo: TDbTableInfo);
+    procedure RebuildTable(ATableInfo: TDbTableInfo);
   public
     constructor Create(AManager: TDbManager);
     //destructor Destroy(); override;
@@ -112,7 +121,7 @@ begin
   self.Active := False;
 end;
 
-procedure TDbDriverSQLite.CheckTable(TableInfo: TDbTableInfo);
+procedure TDbDriverSQLite.CheckTable(ATableInfo: TDbTableInfo);
 var
   sl: TStringList;
   s, sn, st, sql: string;
@@ -120,7 +129,7 @@ var
 begin
   if not Assigned(db) then
     Exit;
-  if TableInfo.Valid then
+  if ATableInfo.IsValid then
     Exit;
   //if Self.TablesList.IndexOf(TableInfo) >= 0 then
   //  Exit;
@@ -128,44 +137,34 @@ begin
   // get table info
   //sql:='SELECT * FROM sqlite_master WHERE type=''table'' and name='''+TableInfo.TableName+'''';
   //DebugSQL(sql);
-  //rs:=db.SchemaTableInfo(TableInfo.TableName);
+  //rs:=db.SchemaTableInfo(ATableInfo.TableName);
 
   sl := TStringList.Create();
   try
-    DB.GetColumnNames(TableInfo.TableName, '', sl);
+    DB.GetColumnNames('%'+ATableInfo.TableName+'%', '', sl);
 
     if sl.Count <= 0 then
     begin
-      s := '';
-      for i := 0 to TableInfo.FieldsCount - 1 do
+      CreateTable(ATableInfo);
+    end
+    else
+    begin
+      {for i := 0 to sl.Count-1 do
       begin
-        sn := TableInfo.FieldNames[i];
-        st := TableInfo.Types[i];
-        if Length(s) > 0 then
-          s := s + ',';
-        s := s + QuotedStr(sn);
-        if sn = 'id' then
+        if ATableInfo.GetFieldIndex(sl[i]) < 0 then
         begin
-          s := s + ' INTEGER PRIMARY KEY NOT NULL';
-          TableInfo.KeyFieldName := sn;
-        end
-        else if st = 'I' then
-          s := s + ' INTEGER NOT NULL'
-        else if st = 'S' then
-          s := s + ' TEXT NOT NULL'
-        else if st = 'B' then
-          s := s + ' INTEGER NOT NULL'
-        else if st = 'D' then
-          s := s + ' TEXT NOT NULL'
-        //else if st = '' then // nothing;
-        else if st[1] = 'L' then
-          s := s + ' INTEGER NOT NULL';
-      end;
-      sql := 'CREATE TABLE ' + QuotedStr(TableInfo.TableName) + ' (' + s + ')';
-      DebugSQL(sql);
-      try
-        DB.ExecuteDirect(sql);
-      finally
+          RebuildTable(ATableInfo);
+          Break;
+        end;
+      end;}
+      // new fields
+      for i := 0 to ATableInfo.FieldsCount-1 do
+      begin
+        if sl.IndexOf(ATableInfo.FieldNames[i]) < 0 then
+        begin
+          RebuildTable(ATableInfo);
+          Break;
+        end;
       end;
     end;
 
@@ -173,15 +172,118 @@ begin
     sl.Free;
   end;
 
-  TableInfo.Valid := True;
-  if Self.TablesList.IndexOf(TableInfo) < 0 then
-    Self.TablesList.Add(TableInfo);
+  ATableInfo.IsValid := True;
+  if Self.TablesList.IndexOf(ATableInfo) < 0 then
+    Self.TablesList.Add(ATableInfo);
 end;
 
 procedure TDbDriverSQLite.DebugSQL(AMsg: string);
 begin
   if Assigned(OnDebugSQL) then
     OnDebugSQL(AMsg);
+end;
+
+procedure TDbDriverSQLite.CreateTable(ATableInfo: TDbTableInfo);
+var
+  s, sn, st, sql: string;
+  i: Integer;
+begin
+  s := '';
+  for i := 0 to ATableInfo.FieldsCount - 1 do
+  begin
+    sn := ATableInfo.FieldNames[i];
+    st := ATableInfo.Types[i];
+    if Length(s) > 0 then
+      s := s + ',';
+    s := s + QuotedStr(sn);
+    if sn = ATableInfo.KeyFieldName then
+    begin
+      s := s + ' INTEGER PRIMARY KEY NOT NULL';
+      //ATableInfo.KeyFieldName := sn;
+    end
+    else if st = 'I' then
+      s := s + ' INTEGER NOT NULL DEFAULT 0'
+    else if st = 'N' then
+      s := s + ' REAL NOT NULL DEFAULT 0'
+    else if st = 'S' then
+      s := s + ' TEXT NOT NULL DEFAULT '''''
+    else if st = 'B' then
+      s := s + ' INTEGER NOT NULL DEFAULT 0'
+    else if st = 'D' then
+      s := s + ' TEXT NOT NULL DEFAULT '''''
+    //else if st = '' then // nothing;
+    else if st[1] = 'L' then
+      s := s + ' INTEGER';
+  end;
+  sql := 'CREATE TABLE ' + QuotedStr(ATableInfo.TableName) + ' (' + s + ')';
+  DebugSQL(sql);
+  try
+    DB.ExecuteDirect(sql);
+  finally
+  end;
+end;
+
+procedure TDbDriverSQLite.RebuildTable(ATableInfo: TDbTableInfo);
+var
+  i: integer;
+  sTmpTableName, sOrigTableName: string;
+  Query: TZReadOnlyQuery;
+  sn, sql: string;
+begin
+  if not Assigned(db) then Exit;
+  // old table info
+  sn := '';
+  //rs:=db.SchemaTableInfo(sTableName);
+  sql := 'SELECT * FROM ' + ATableInfo.TableName + ' LIMIT 1;';
+  DebugSQL(sql);
+  Query := TZReadOnlyQuery.Create(nil);
+  try
+    Query.Connection := db;
+    Query.SQL.Text := sql;
+    Query.Open();
+
+    for i := 0 to Query.FieldCount-1 do
+    begin
+      if ATableInfo.GetFieldIndex(Query.Fields[i].FieldName) < 0 then Continue;
+      if Length(sn) > 0 then
+        sn := sn + ',';
+      sn := sn + Query.Fields[i].FieldName;
+    end;
+  finally
+    Query.Free();
+  end;
+
+  sOrigTableName := ATableInfo.TableName;
+  sTmpTableName := ATableInfo.TableName + '_tmp';
+
+  try
+    // drop temp table (if exists)
+    sql := 'DROP TABLE IF EXISTS ' + sTmpTableName + ';';
+    DebugSQL(sql);
+    db.ExecuteDirect(sql);
+
+    // create new table
+    ATableInfo.TableName := sTmpTableName;
+    CreateTable(ATableInfo);
+
+    // copy to new table
+    sql := 'INSERT INTO ' + sTmpTableName + ' (' + sn + ') '
+      + 'SELECT ' + sn + ' FROM ' + sOrigTableName + ';';
+    DebugSQL(sql);
+    db.ExecuteDirect(sql);
+
+    // drop orig table
+    sql := 'DROP TABLE ' + sOrigTableName + ';';
+    DebugSQL(sql);
+    db.ExecuteDirect(sql);
+
+    // rename temp table to orig
+    sql := 'ALTER TABLE ' + sTmpTableName + ' RENAME TO ' + sOrigTableName + ';';
+    DebugSQL(sql);
+    db.ExecuteDirect(sql);
+  finally
+    ATableInfo.TableName := sOrigTableName;
+  end;
 end;
 
 function TDbDriverSQLite.Open(ADbName: string): Boolean;
@@ -224,7 +326,8 @@ function TDbDriverSQLite.GetTable(AItemList: TDbItemList; Filter: string = ''): 
 var
   //rs: IMkSqlStmt;
   Query: TZReadOnlyQuery;
-  i, n, m: Integer;
+  n, m: Integer;
+  TmpID: TDbItemID;
   Item: TDbItem;
   fn, sql: string;
   fl: TStringList;
@@ -243,7 +346,7 @@ begin
   try
     fl.CommaText := Filter;
 
-    sql := 'SELECT * FROM ' + QuotedStr(AItemList.DbTableInfo.TableName);
+    sql := 'SELECT * FROM ' + AnsiQuotedStr(AItemList.DbTableInfo.TableName, '"');
     // filters
     if fl.Count > 0 then
       sql := sql + ' WHERE ';
@@ -251,8 +354,10 @@ begin
     begin
       if m > 0 then
         sql := sql + ' AND ';
-      sql := sql + QuotedStr(fl.Names[m]) + '=' + QuotedStr(fl.ValueFromIndex[m]);
+      sql := sql + AnsiQuotedStr(fl.Names[m], '"') + '=' + QuotedStr(fl.ValueFromIndex[m]);
     end;
+    sql := sql + ' ORDER BY ' + AItemList.DbTableInfo.KeyFieldName;
+    AItemList.SetFlag(LIST_FLAG_SORTED, True);
   finally
     FreeAndNil(fl);
   end;
@@ -267,15 +372,21 @@ begin
     Query.Open();
     while not Query.EOF do
     begin
-      i := Query.FieldValues['id'];
+      TmpID := Query.FieldValues[AItemList.DbTableInfo.KeyFieldName];
 
-      Item := AItemList.GetItemByID(i);
+      Item := AItemList.GetItemByID(TmpID);
+      if not Assigned(Item) and Assigned(AItemList.ParentList) then
+      begin
+        Item := AItemList.ParentList.GetItemByID(TmpID);
+        if Assigned(Item) then
+          AItemList.Add(Item);
+      end;
       if not Assigned(Item) then
         Item := AItemList.NewItem();
       for n := 0 to AItemList.DbTableInfo.FieldsCount - 1 do
       begin
         fn := AItemList.DbTableInfo.FieldNames[n]; // field name
-        Item.SetValue(fn, Query.FieldValues[fn]);
+        Item.SetValue(fn, VarToStrDef(Query.FieldValues[fn], ''));
       end;
       Query.Next();
     end;
@@ -311,7 +422,7 @@ begin
       vl := vl + iv;
       //vl:=vl+fn+'='''+iv+'''';
     end;
-    sql := 'INSERT OR REPLACE INTO ' + QuotedStr(AItemList.DbTableInfo.TableName) + ' VALUES (' + vl + ')';
+    sql := 'INSERT OR REPLACE INTO ' + AnsiQuotedStr(AItemList.DbTableInfo.TableName, '"') + ' VALUES (' + vl + ')';
     DebugSQL(sql);
     //sql:='UPDATE '+AItemList.DbTableInfo.TableName+' SET '+vl+' WHERE ROWID='+IntToStr(Item.ID);
     try
@@ -339,7 +450,7 @@ begin
   if not Assigned(TableInfo) then
     Exit;
 
-  sql := 'SELECT * FROM ' + TableInfo.TableName + ' WHERE id=' + QuotedStr(sItemID);
+  sql := Format('SELECT * FROM %s WHERE %s = %s', [AnsiQuotedStr(TableInfo.TableName, '"'), TableInfo.KeyFieldName, QuotedStr(sItemID)]);
   DebugSQL(sql);
 
   Query := TZReadOnlyQuery.Create(nil);
@@ -379,24 +490,42 @@ begin
   CheckTable(TableInfo);
 
   vl := '';
-  for n := 0 to TableInfo.FieldsCount - 1 do
+  if AItem.IsNew then
   begin
-    fn := TableInfo.FieldNames[n]; // field name
-    iv := AItem.GetValue(fn);
-    if n > 0 then
-      vl := vl + ',';
-    vl := vl + QuotedStr(iv);
-    //vl:=vl+fn+'='''+iv+'''';
+    for n := 0 to TableInfo.FieldsCount - 1 do
+    begin
+      fn := TableInfo.FieldNames[n]; // field name
+      iv := AItem.GetValue(fn);
+      if vl <> '' then
+        vl := vl + ',';
+      vl := vl + QuotedStr(iv);
+      //vl:=vl+fn+'='''+iv+'''';
+    end;
+    sql := 'INSERT OR REPLACE INTO ' + AnsiQuotedStr(TableInfo.TableName, '"') + ' VALUES (' + vl + ')';
+  end
+  else
+  begin
+    for n := 0 to TableInfo.FieldsCount - 1 do
+    begin
+      fn := TableInfo.FieldNames[n]; // field name
+      if fn = TableInfo.KeyFieldName then
+        Continue;
+      iv := AItem.GetValue(fn);
+      if vl <> '' then
+        vl := vl + ', ';
+      vl := vl + fn + '=' + QuotedStr(iv);
+    end;
+    sql := 'UPDATE ' + AnsiQuotedStr(TableInfo.TableName, '"') + ' SET ' + vl
+         + ' WHERE ' + TableInfo.KeyFieldName + '=' + IntToStr(AItem.GetID);
   end;
-  sql := 'INSERT OR REPLACE INTO ' + QuotedStr(TableInfo.TableName) + ' VALUES (' + QuotedStr(vl) + ')';
   DebugSQL(sql);
-  //sql:='UPDATE '+AItemList.DbTableInfo.TableName+' SET '+vl+' WHERE ROWID='+IntToStr(Item.ID);
   try
     DB.ExecuteDirect(sql);
     Result := True;
 
   finally
   end;
+  AItem.SetFlag(ITEM_FLAG_NEW, False);
 end;
 
 function TDbDriverSQLite.DeleteDBItem(AItem: TDBItem): Boolean;
@@ -407,7 +536,7 @@ begin
   Result := False;
   if not Assigned(AItem) then Exit;
   TableInfo := AItem.DbTableInfo;
-  sql := Format('DELETE FROM %s WHERE %s = %s', [TableInfo.TableName, TableInfo.KeyFieldName, IntToStr(AItem.GetID())]);
+  sql := Format('DELETE FROM %s WHERE %s = %s', [AnsiQuotedStr(TableInfo.TableName, '"'), TableInfo.KeyFieldName, IntToStr(AItem.GetID())]);
   DebugSQL(sql);
   DB.ExecuteDirect(sql);
   Result := inherited DeleteDBItem(AItem);

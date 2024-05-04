@@ -1,13 +1,21 @@
 {
-РњРѕРґСѓР»СЊ РїРѕРґСЃРёСЃС‚РµРјС‹ Р±Р°Р·С‹ РґР°РЅРЅС‹С….
+Модуль подсистемы базы данных.
 
-!! РІ TDbItem РјР°СЃСЃРёРІ Р·РЅР°С‡РµРЅРёР№ Р±РѕР»СЊС€Рµ РЅРµРѕР±С…РѕРґРёРјРѕРіРѕ
+!! в TDbItem массив значений больше необходимого
 
-TDbDriverCSV - РґСЂР°Р№РІРµСЂ Р‘Р”, С…СЂР°РЅСЏС‰РµР№ РґР°РЅРЅС‹Рµ РІ С„Р°Р№Р»Р°С… С„РѕСЂРјР°С‚Р° CSV
-РџРµСЂРµРЅРѕСЃС‹ СЃС‚СЂРѕРє Р·Р°РјРµРЅСЏСЋС‚СЃСЏ РЅР° "~>"
+TDbDriverCSV - драйвер БД, хранящей данные в файлах формата CSV
+Переносы строк заменяются на "~>"
 
-GlobalDbDriver - СѓСЃС‚Р°РЅРѕРІРёС‚Рµ РїРѕСЃР»Рµ СЃРѕР·РґР°РЅРёСЏ РґСЂР°Р№РІРµСЂР° Р‘Р”
-GlobalUseSnowflakeID - СѓСЃС‚Р°РЅРѕРІРёС‚СЊРµ РІ True РґР»СЏ РёСЃРїРѕР»СЊР·РѕРІР°РЅРёСЏ Snowflake ID
+GlobalUseSnowflakeID - установите в True для использования Snowflake ID
+
+GlobalDbManager.AutoCommit := True;
+GlobalDbManager.DbDriver := TDbDriverCSV.Create(GlobalDbManager);
+GlobalDbManager.DbDriver.Open(DB_PATH);
+
+Привязка таблицы к полю
+FieldInfo.MasterTableName := 'table_name';
+GlobalDbManager.RefreshDbTableInfo();
+
 }
 unit DbUnit;
 
@@ -21,6 +29,12 @@ const
   DB_FIELD_TYPE_STRING   = 'S';
   DB_FIELD_TYPE_DATETIME = 'D';  // YYYYMMDDHHNNSS
   DB_FIELD_TYPE_LINK     = 'L';  // table_name~id
+
+  ITEM_FLAG_NEW = 1;      // новый (созданный, но не записаный в БД)
+  ITEM_FLAG_DELETED = 2;  // удален из БД
+  ITEM_FLAG_LOCKED = 4;   // заблокирован
+
+  LIST_FLAG_SORTED = 1;   // элементы списка отсортированы по ID
 
 type
   TDbTableInfo = class;
@@ -41,10 +55,16 @@ type
     FieldDescription: string;
     // Field belongs to this table info
     TableInfo: TDbTableInfo;
-    // Field contain ID for MasterTable element
+    // Field contain name for MasterTable element
+    MasterTableName: string;
     MasterTable: TDbTableInfo;
     // Indexed field - fast search, slow write
     IsIndexed: Boolean;
+    // For "I" fields, list of string values (zero-based)
+    // for example:
+    // [0] = "Disabled"
+    // [1] = "Enabled"
+    EnumValues: array of string;
 
     { visual field properties }
     //IsVisible: Boolean;
@@ -99,8 +119,11 @@ type
     TableDescription: string;
     // Key field name (ID)
     KeyFieldName: string;
-    // РџСЂРёР·РЅР°Рє, С‚РѕРіРѕ, С‡С‚Рѕ С‚Р°Р±Р»РёС†Р° СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓРµС‚ СЃРІРѕРµРјСѓ Р°РЅР°Р»РѕРіСѓ РІ Р±Р°Р·Рµ РґР°РЅРЅС‹С…
-    Valid: Boolean;
+    // Признак, того, что таблица соответствует своему аналогу в базе данных
+    IsValid: Boolean;
+    // Признак, что это журнал с постоянно добавляемыми элементами
+    IsJournal: Boolean;
+
     constructor Create(AItemClass: TDbItemClass);
     destructor Destroy(); override;
     function GetDbItemClass(): TDbItemClass; virtual;
@@ -118,7 +141,7 @@ type
     procedure ModifyField(const Index: Integer; const FieldName, FieldType: string);
     // Remove field from table
     procedure DeleteField(const FieldName: string);
-    // Return field index from field name
+    // Return field index from field name, -1 if not found
     function GetFieldIndex(const AName: string): Integer;
     // Return 'name' field info
     function GetNameField(): TDbFieldInfo;
@@ -153,54 +176,71 @@ type
 
   TDbItem = class(TInterfacedObject, IDbItem)
   private
-    // РњР°СЃСЃРёРІ Р·РЅР°С‡РµРЅРёР№ (РїРѕР»РµР№) СЌР»РµРјРµРЅС‚Р°
+    // Массив значений (полей) элемента
     FValues: array of string;
-    // РРЅРёС†РёР°Р»РёР·РёСЂСѓРµС‚ РјР°СЃСЃРёРІ Р·РЅР°С‡РµРЅРёР№, Р·Р°РїРѕР»РЅСЏРµС‚ РёС… РїСѓСЃС‚С‹РјРё Р·РЅР°С‡РµРЅРёСЏРјРё
+    // Инициализирует массив значений, заполняет их пустыми значениями
     procedure InitValues();
   protected
-    // РёРґРµРЅС‚РёС„РёРєР°С‚РѕСЂ СЌР»РµРјРµРЅС‚Р°
+    // Признаки в виде битов (ITEM_FLAG_)
+    FFlags: Byte;
+    // идентификатор элемента
     FID: TDbItemID;
-    // СЃС‚СЂРѕРєРѕРІРѕРµ РїСЂРµРґСЃС‚Р°РІР»РµРЅРёРµ Р·РЅР°С‡РµРЅРёСЏ
+    // строковое представление значения
     FName: string;
     procedure GetLocal();
     procedure SetLocal();
     procedure GetGlobal();
     procedure SetGlobal();
   public
-    // РґР°С‚Р° РїРѕСЃР»РµРґРЅРµРіРѕ РёР·РјРµРЅРµРЅРёСЏ
+    // дата последнего изменения
     //TimeStamp: TDateTime;
-    // РёРЅС„РѕСЂРјР°С†РёСЏ Рѕ С‚Р°Р±Р»РёС†Рµ
+    // информация о таблице
     DbTableInfo: TDbTableInfo;
     class procedure FillDbTableInfo(ADbTableInfo: TDbTableInfo); virtual;
     function GetID(): TDbItemID;
+    function GetIDStr(): string;
     procedure SetID(AValue: TDbItemID);
     function GetName(): string;
     procedure SetName(const AValue: string);
-    // Р’РѕР·РІСЂР°С‰Р°РµС‚ Р·РЅР°С‡РµРЅРёРµ РїРѕ РёРјРµРЅРё РєРѕР»РѕРЅРєРё
-    // РњРѕР¶РµС‚ Р±С‹С‚СЊ РїРµСЂРµРѕРїСЂРµРґРµР»РµРЅРѕ РІ РїРѕС‚РѕРјРєР°С…
+    // Копирование значений всех полей из заданного элемента
+    procedure Assign(AItem: TDbitem); virtual;
+
+    // Возвращает значение по имени колонки
+    // Может быть переопределено в потомках
     function GetValue(const AName: string): string; virtual;
 
-    // Р’РѕР·РІСЂР°С‰Р°РµС‚ С‚РµРєСЃС‚РѕРІРѕРµ РїСЂРµРґСЃС‚Р°РІР»РµРЅРёРµ (РґР»СЏ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ) Р·РЅР°С‡РµРЅРёСЏ РїРѕ РёРјРµРЅРё РєРѕР»РѕРЅРєРё
+    // Возвращает текстовое представление (для пользователя) значения по имени колонки
     function GetValueText(const AName: string): string; virtual;
 
-    // РЈСЃС‚Р°РЅР°РІР»РёРІР°РµС‚ Р·РЅР°С‡РµРЅРёРµ РїРѕ РёРјРµРЅРё РєРѕР»РѕРЅРєРё
-    // РњРѕР¶РµС‚ Р±С‹С‚СЊ РїРµСЂРµРѕРїСЂРµРґРµР»РµРЅРѕ РІ РїРѕС‚РѕРјРєР°С…
+    // Устанавливает значение по имени колонки
+    // Может быть переопределено в потомках
     procedure SetValue(const AName: string; AValue: string); virtual;
-    // РґРѕСЃС‚СѓРї Рє Р·РЅР°С‡РµРЅРёСЋ РїРѕР»СЏ РїРѕ РµРіРѕ РёРјРµРЅРё
-    property Values[const AName: string]: string read GetValue write SetValue; default;
 
     function GetValueAsInteger(const AName: string): Integer;
     procedure SetValueAsInteger(const AName: string; AValue: Integer);
 
     function GetValueAsID(const AName: string): TDbItemID;
     procedure SetValueAsID(const AName: string; AValue: TDbItemID);
+
+    function GetValueAsDateTime(const AName: string): TDateTime;
+    procedure SetValueAsDateTime(const AName: string; AValue: TDateTime);
+
+    function IsNew(): Boolean;
+    function IsDeleted(): Boolean;
+    function IsLocked(): Boolean;
+    procedure SetFlag(AFlagId: Integer; AValue: Boolean);
+
+    property ID: TDbItemID read GetID write SetID;
+    property Name: string read GetName write SetName;
+    // доступ к значению поля по его имени
+    property Values[const AName: string]: string read GetValue write SetValue; default;
   end;
 
   TDbManager = class;
   TDbDriver = class;
 
-  // РЎРїРёСЃРѕРє РѕРґРЅРѕС‚РёРїРЅС‹С… СЌР»РµРјРµРЅС‚РѕРІ Р±Р°Р·С‹ РґР°РЅРЅС‹С…
-  // РџСЂРѕС‰Рµ РіРѕРІРѕСЂСЏ - С‚Р°Р±Р»РёС†Р°
+  // Список однотипных элементов базы данных
+  // Проще говоря - таблица
 
   { TDbItemList }
 
@@ -209,11 +249,20 @@ type
     FLastID: TDbItemID;
     FDbManager: TDbManager;
     FDbTableInfo: TDbTableInfo;
+    FParentList: TDbItemList;
+    // Признаки в виде битов (LIST_FLAG_)
+    FFlags: Byte;
+    { if Result >= 0 then index of found name
+      if Result < 0 then 1-based index for name (can be > Count) }
+    function GetIndexById(AItemID: TDbItemID): Integer;
+
   public
     constructor Create(ADbTableInfo: TDbTableInfo; AManager: TDbManager); reintroduce;
+    constructor Create(AParentList: TDbItemList); reintroduce;
     function AddItem(AItem: TDbItem; SetNewID: Boolean = False): Integer;
     function GetItemByIndex(AIndex: Integer): TDbItem;
     function GetItemByID(ItemID: TDbItemID): TDbItem;
+    // поиск по имени. Если Wildcard = True, то по части имени
     function GetItemByName(ItemName: string; Wildcard: Boolean = False): TDbItem;
     function GetItemIDByName(ItemName: string; Wildcard: Boolean = False): TDbItemID;
     function GetItemNameByID(ItemID: TDbItemID): string;
@@ -223,8 +272,14 @@ type
     // write all items to database driver
     procedure StoreAll();
 
+    function IsSorted(): Boolean;
+    procedure SetFlag(AFlagId: Integer; AValue: Boolean);
+
     property DbTableInfo: TDbTableInfo read FDbTableInfo;
     property DbManager: TDbManager read FDbManager;
+    // вышестоящий список, если назначен, то текущий список не владеет элементами
+    // полезно для временных фильтрованных списков с элементами из вышестоящего
+    property ParentList: TDbItemList read FParentList;
   end;
 
   TDbItemEvent = procedure(ADbItem: TDbItem) of object;
@@ -251,23 +306,30 @@ type
     constructor Create();
     destructor Destroy(); override;
 
-    // Р’РѕР·РІСЂР°С‰Р°РµС‚ РѕРїРёСЃР°РЅРёРµ С‚Р°Р±Р»РёС†С‹ РїРѕ РєР»Р°СЃСЃСѓ СЌР»РµРјРµРЅС‚Р°, СЃРѕР·РґР°РµС‚ РЅРѕРІРѕРµ РїСЂРё РЅРµРѕР±С…РѕРґРёРјРѕСЃС‚Рё
+    // Возвращает описание таблицы по классу элемента, создает новое при необходимости
     function GetDbTableInfo(AItemClass: TDbItemClass): TDbTableInfo; overload;
-    // Р’РѕР·РІСЂР°С‰Р°РµС‚ РѕРїРёСЃР°РЅРёРµ С‚Р°Р±Р»РёС†С‹ РїРѕ РµРµ РёРјРµРЅРё
+    // Возвращает описание таблицы по ее имени
     function GetDbTableInfo(const TableName: string): TDbTableInfo; overload;
-    // Р’РѕР·РІСЂР°С‰Р°РµС‚ DBItem РїРѕ Р·РЅР°С‡РµРЅРёСЋ РІРёРґР° Table_name~id
+    // Возвращает DBItem по значению вида Table_name~id
+    // сначала поиск в кеше, потом в БД
     function GetDBItem(const AValue: string): TDBItem; virtual;
     function SetDBItem(AItem: TDBItem): Boolean; virtual;
     function NewDBItem(const ATableName: string): TDBItem;
-    // СѓРґР°Р»СЏРµС‚ СЌР»РµРјРµРЅС‚ РёР· Р±Р°Р·С‹ РґР°РЅРЅС‹С… Рё РґРѕР±Р°РІР»СЏРµС‚ РІ СЃРїРёСЃРѕРє СѓРґР°Р»РµРЅРЅС‹С…
+    // удаляет элемент из базы данных и добавляет в список удаленных
     function DeleteDBItem(AItem: TDBItem): Boolean; virtual;
+    // возвращает название элемента по имени таблицы и ID
+    function GetDbItemName(ATableName: string; AItemID: TDbItemID): string;
 
-    // РРЅС‚РµСЂР°РєС‚РёРІРЅС‹Р№ РІС‹Р±РѕСЂ СЌР»РµРјРµРЅС‚Р° РёР· СЃРїРёСЃРєР°, РІРѕР·РІСЂР°С‰Р°РµС‚ True РїСЂРё СѓСЃРїРµС…Рµ
-    // AItem - СЌР»РµРјРµРЅС‚ РґР»СЏ РїРѕР·РёС†РёРѕРЅРёСЂРѕРІР°РЅРёСЏ, РїРѕСЃР»Рµ РІС‹Р·РѕРІР° - РІС‹Р±СЂР°РЅС‹Р№ СЌР»РµРјРµРЅС‚
+    // обновляет свойства таблицы или всех таблиц
+    // устанавливает привязки к MasterTable
+    procedure RefreshDbTableInfo(ATableName: string = '');
+
+    // Интерактивный выбор элемента из списка, возвращает True при успехе
+    // AItem - элемент для позиционирования, после вызова - выбраный элемент
     function SelectItemFromList(AItemList: TDbItemList; var AItem: TDBItem): Boolean; virtual;
 
 
-    // РЎРїРёСЃРѕРє РѕРїРёСЃР°РЅРёР№ С‚Р°Р±Р»РёС† TDbTableInfo
+    // Список описаний таблиц TDbTableInfo
     property TableInfoList: TDbTableInfoList read FTableInfoList;
     property DeletedItems: TList read FDeletedItems;
 
@@ -275,12 +337,12 @@ type
 
     property OnItemUpdate: TDbItemEvent read FOnItemUpdate write FOnItemUpdate;
     property OnItemDelete: TDbItemEvent read FOnItemDelete write FOnItemDelete;
-    // РІС‹Р·С‹РІР°РµС‚СЃСЏ РїСЂРё РёРЅС‚РµСЂР°РєС‚РёРІРЅРѕРј РІС‹Р±РѕСЂРµ СЌР»РµРјРµРЅС‚Р°
+    // вызывается при интерактивном выборе элемента
     property OnItemSelect: TDbItemSelectEvent read FOnItemSelect write FOnItemSelect;
   end;
 
-  // Р”СЂР°Р№РІРµСЂ Р±Р°Р·С‹ РґР°РЅРЅС‹С… - РґР»СЏ РґРѕСЃС‚СѓРїР° Рє С…СЂР°РЅРёР»РёС‰Сѓ РґР°РЅРЅС‹С…
-  // Р­С‚Рѕ Р±Р°Р·РѕРІС‹Р№ РєР»Р°СЃСЃ, РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ РїРµСЂРµРѕРїСЂРµРґРµР»РµРЅРѕ РґР»СЏ РєРѕРЅРєСЂРµС‚РЅС‹С… РІРёРґРѕРІ Р‘Р”
+  // Драйвер базы данных - для доступа к хранилищу данных
+  // Это базовый класс, должен быть переопределено для конкретных видов БД
 
   { TDbDriver }
 
@@ -294,27 +356,28 @@ type
 
     constructor Create(AManager: TDbManager);
     destructor Destroy(); override;
-    // РћС‚РєСЂС‹РІР°РµС‚ СѓРєР°Р·Р°РЅРЅСѓСЋ Р±Р°Р·Сѓ РґР°РЅРЅС‹С…
+    // Открывает указанную базу данных
     function Open(ADbName: string): Boolean; virtual; abstract;
-    // Р—Р°РєСЂС‹РІР°РµС‚ СѓРєР°Р·Р°РЅРЅСѓСЋ Р±Р°Р·Сѓ РґР°РЅРЅС‹С…
+    // Закрывает указанную базу данных
     function Close(): Boolean; virtual; abstract;
-    // Р’РѕР·РІСЂР°С‰Р°РµС‚ РѕРїРёСЃР°РЅРёРµ С‚Р°Р±Р»РёС†С‹ РїРѕ РµРµ РёРјРµРЅРё
+    // Возвращает описание таблицы по ее имени
     function GetDbTableInfo(TableName: string): TDbTableInfo;
-    // Р—Р°РїРѕР»РЅСЏРµС‚ СѓРєР°Р·Р°РЅРЅСѓСЋ С‚Р°Р±Р»РёС†Сѓ СЌР»РµРјРµРЅС‚Р°РјРё РёР· Р±Р°Р·С‹ РґР°РЅРЅС‹С…, РїРѕ Р·Р°РґР°РЅРЅРѕРјСѓ С„РёР»СЊС‚СЂСѓ
-    // Р¤РёР»СЊС‚СЂ РІ РІРёРґРµ comma-delimited string РєР°Рє РїРѕР»Рµ=Р·РЅР°С‡РµРЅРёРµ
+    // Заполняет указанную таблицу элементами из базы данных, по заданному фильтру
+    // Фильтр в виде comma-delimited string как поле=значение
     function GetTable(AItemList: TDbItemList; Filter: string = ''): Boolean;
       virtual; abstract;
-    // Р—Р°РїРѕР»РЅСЏРµС‚ Р±Р°Р·Сѓ РґР°РЅРЅС‹С… СЌР»РµРјРµРЅС‚Р°РјРё РёР· СѓРєР°Р·Р°РЅРЅРѕР№ С‚Р°Р±Р»РёС†С‹, РїРѕ Р·Р°РґР°РЅРЅРѕРјСѓ С„РёР»СЊС‚СЂСѓ
+    // Заполняет базу данных элементами из указанной таблицы, по заданному фильтру
     function SetTable(AItemList: TDbItemList; Filter: string = ''): Boolean; virtual; abstract;
-    // Р’РѕР·РІСЂР°С‰Р°РµС‚ DBItem РїРѕ Р·РЅР°С‡РµРЅРёСЋ РІРёРґР° Table_name~id
-    // Р”РѕР»Р¶РЅРѕ Р±С‹С‚СЊ РїРµСЂРµРѕРїСЂРµРґРµР»РµРЅРѕ РІ РїРѕС‚РѕРјРєР°С…
+    // Возвращает DBItem по значению вида Table_name~id
+    // Должно быть переопределено в потомках
     function GetDBItem(const AValue: string): TDBItem; virtual; abstract;
     function SetDBItem(AItem: TDBItem): Boolean; virtual; abstract;
-    // СѓРґР°Р»СЏРµС‚ СЌР»РµРјРµРЅС‚ РёР· Р±Р°Р·С‹ РґР°РЅРЅС‹С… Рё РґРѕР±Р°РІР»СЏРµС‚ РІ СЃРїРёСЃРѕРє СѓРґР°Р»РµРЅРЅС‹С…
+    // удаляет элемент из кеша и из базы данных
+    // внутри функции освобождать элемент нельзя!
     function DeleteDBItem(AItem: TDBItem): Boolean; virtual;
 
     property DbManager: TDbManager read FDbManager;
-    // РЎРїРёСЃРѕРє РѕРїРёСЃР°РЅРёР№ С‚Р°Р±Р»РёС† TDbTableInfo
+    // Список описаний таблиц TDbTableInfo
     property TablesList: TDbTableInfoList read GetTablesList;
     // Triggers before SQL statement executed, return SQL text
     property OnDebugSQL: TGetStrProc read FOnDebugSQL write FOnDebugSQL;
@@ -325,7 +388,7 @@ type
   TDbDriverCSV = class(TDbDriver)
   private
     dbPath: string;
-    FEventSourcingMode: Boolean; // СЂРµР¶РёРј СЂРµРіРёСЃС‚СЂР°С†РёРё СЃРѕР±С‹С‚РёР№ (event sourcing)
+    FEventSourcingMode: Boolean; // режим регистрации событий (event sourcing)
     procedure CheckTable(TableInfo: TDbTableInfo);
     function GetTableFileName(TableInfo: TDbTableInfo): string;
     function ItemToStrCSV(AItem: TDBItem; ASL: TStringList = nil): string;
@@ -340,24 +403,24 @@ type
     function GetDBItem(const AValue: string): TDBItem; override;
     function SetDBItem(AItem: TDBItem): Boolean; override;
     function DeleteDBItem(AItem: TDBItem): Boolean; override;
-    // Р РµР¶РёРј С…СЂР°РЅРµРЅРёСЏ РґР°РЅРЅС‹С… РєР°Рє СЃРѕР±С‹С‚РёР№. РР·РјРµРЅРµРЅРёРµ Рё СѓРґР°Р»РµРЅРёРµ РґР°РЅРЅС‹С…
-    // РґРѕР±Р°РІР»СЏСЋС‚СЃСЏ РєР°Рє РЅРѕРІС‹Рµ СЌР»РµРјРµРЅС‚С‹. РџСЂРёРјРµРЅРёРјРѕ РґР»СЏ РјР°Р»РѕРіРѕ С‡РёСЃР»Р° СЌР»РµРјРµРЅС‚РѕРІ РёР»Рё
-    // РґР°РЅРЅС‹С… Р±РµР· РёР·РјРµРЅРµРЅРёР№ Рё СѓРґР°Р»РµРЅРёР№. РџРѕС‚РѕРјСѓ С‡С‚Рѕ РґР»СЏ РїРѕР»СѓС‡РµРЅРёСЏ Р°РєС‚СѓР°Р»СЊРЅРѕРіРѕ
-    // СЃРѕСЃС‚РѕСЏРЅРёСЏ РЅРµРѕР±С…РѕРґРёРјРѕ РІС‹С‡РёС‚С‹РІР°С‚СЊ РІСЃРµ РґР°РЅРЅС‹Рµ
+    // Режим хранения данных как событий. Изменение и удаление данных
+    // добавляются как новые элементы. Применимо для малого числа элементов или
+    // данных без изменений и удалений. Потому что для получения актуального
+    // состояния необходимо вычитывать все данные
     property EventSourcingMode: Boolean read FEventSourcingMode write SetEventSourcingMode;
   end;
 
 var
   GlobalDbManager: TDbManager;
-  GlobalUseSnowflakeID: Boolean; // РїСЂРёР·РЅР°Рє РёСЃРїРѕР»СЊР·РѕРІР°РЅРёСЏ Snowflake ID РІРјРµСЃС‚Рѕ РїРѕСЂСЏРґРєРѕРІРѕРіРѕ РЅРѕРјРµСЂР°
+  GlobalUseSnowflakeID: Boolean; // признак использования Snowflake ID вместо порядкового номера
 
 function DefaultDbModel(): TDbManager;
 
-// Р’РѕР·РІСЂР°С‰Р°РµС‚ РЅРѕРІС‹Р№ GUID С„РѕСЂРјР°С‚Р° Snowflake ID
+// Возвращает новый GUID формата Snowflake ID
 function GetSnowflakeID(): Int64;
-// РЈСЃС‚Р°РЅРѕРІРёС‚СЊ machine ID (0..1023)
+// Установить machine ID (0..1023)
 procedure SetMachineID(AValue: Integer);
-// РџРѕР»СѓС‡РёС‚СЊ РґР°С‚Сѓ/РІСЂРµРјСЏ РёР· Snowflake ID
+// Получить дату/время из Snowflake ID
 function GetDateTimeFromSnowflakeID(AValue: Int64): TDateTime;
 
 // 2023-07-24 10:26:34 -> 20230724102634
@@ -519,7 +582,7 @@ begin
     if Result.GetDbItemClass() = AItemClass then
       Exit;
   end;
-  // РЅРµ РЅР°С€Р»Рё, СЃРѕР·РґР°РµРј РЅРѕРІСѓСЋ Рё РґРѕР±Р°РІР»СЏРµРј РІ СЃРїРёСЃРѕРє
+  // не нашли, создаем новую и добавляем в список
   Result := TDbTableInfo.Create(AItemClass);
   Result.ItemsCache := TDbItemList.Create(Result, Self);
   AItemClass.FillDbTableInfo(Result);
@@ -547,7 +610,7 @@ var
   sTableName: string;
 begin
   Result := nil;
-  // РїРѕРёСЃРє РІ РєРµС€Рµ
+  // поиск в кеше
   n := Pos('~', AValue);
   sTableName := Copy(AValue, 1, n - 1);
   nID := StrToInt64Def(Copy(AValue, n + 1, MaxInt), 0);
@@ -558,25 +621,30 @@ begin
     Result := TmpTableInfo.ItemsCache.GetItemByID(nID);
   end;
 
-  // С‡С‚РµРЅРёРµ РёР· Р‘Р”
+  // чтение из БД
   if not Assigned(Result) and Assigned(DbDriver) then
+  begin
     Result := DbDriver.GetDBItem(AValue);
+    // добавляем в кеш
+    if Assigned(Result) and Assigned(TmpTableInfo) then
+      TmpTableInfo.ItemsCache.AddItem(Result);
+  end;
 end;
 
 function TDbManager.SetDBItem(AItem: TDBItem): Boolean;
 begin
-  if Assigned(OnItemUpdate) then OnItemUpdate(Aitem);
   if Assigned(DbDriver) then
   begin
     Result := DbDriver.SetDBItem(AItem);
-    if Result and AutoCommit then
+    {if Result and AutoCommit then
     begin
       if Assigned(AItem.DbTableInfo.ItemsCache) then
         AItem.DbTableInfo.ItemsCache.StoreAll();
-    end;
+    end; }
   end
   else
     Result := False;
+  if Assigned(OnItemUpdate) then OnItemUpdate(Aitem);
 end;
 
 function TDbManager.NewDBItem(const ATableName: string): TDBItem;
@@ -593,22 +661,55 @@ end;
 
 function TDbManager.DeleteDBItem(AItem: TDBItem): Boolean;
 begin
-  if Assigned(OnItemDelete) then OnItemDelete(Aitem);
   FDeletedItems.Add(AItem);
   if Assigned(DbDriver) then
   begin
     Result := DbDriver.DeleteDBItem(AItem);
     if Result and AutoCommit then
     begin
-      if Assigned(AItem.DbTableInfo.ItemsCache) then
+      {if Assigned(AItem.DbTableInfo.ItemsCache) then
       begin
         // item removed from cache in driver
         AItem.DbTableInfo.ItemsCache.StoreAll();
-      end;
+      end;}
     end;
   end
   else
     Result := False;
+  if Assigned(OnItemDelete) then OnItemDelete(Aitem);
+end;
+
+function TDbManager.GetDbItemName(ATableName: string; AItemID: TDbItemID): string;
+var
+  TmpItem: TDbItem;
+begin
+  Result := '';
+  TmpItem := GetDBItem(ATableName + '~' + IntToStr(AItemID));
+  if Assigned(TmpItem) then
+    Result := TmpItem.GetName();
+
+end;
+
+procedure TDbManager.RefreshDbTableInfo(ATableName: string);
+var
+  TmpTabInfo: TDbTableInfo;
+  TmpField: TDbFieldInfo;
+  i, ii: Integer;
+begin
+  for i := 0 to TableInfoList.Count - 1 do
+  begin
+    TmpTabInfo := TableInfoList.GetItem(i);
+    // skip non-specified tables
+    if (ATableName <> '') and (TmpTabInfo.TableName <> ATableName) then
+      Continue;
+    // set master table info
+    for ii := 0 to TmpTabInfo.FieldsCount-1 do
+    begin
+      TmpField := TmpTabInfo.Fields[ii];
+      if TmpField.MasterTableName <> '' then
+        TmpField.MasterTable := GetDbTableInfo(TmpField.MasterTableName);
+    end;
+  end;
 end;
 
 function TDbManager.SelectItemFromList(AItemList: TDbItemList;
@@ -660,8 +761,9 @@ begin
   inherited Create();
   FFieldInfoList := TDbFieldInfoList.Create();
   FDbItemClass := AItemClass;
-  Self.Valid := False;
-  AddField('id', 'I');
+  Self.IsValid := False;
+  KeyFieldName := 'id';
+  AddField(KeyFieldName, 'I');
   AddField('name', 'S');
   //AddField('timestamp', 'D');
 end;
@@ -758,12 +860,14 @@ begin
   Result := -1;
   for i := 0 to FFieldInfoList.Count-1 do
   begin
-    if FFieldInfoList.GetItem(i).FieldName = AName then
+    // same string case insensetive
+    if CompareText(FFieldInfoList.GetItem(i).FieldName, AName) = 0 then
     begin
       Result := i;
       Exit;
     end;
   end;
+  Result := -1;
 end;
 
 function TDbTableInfo.GetNameField: TDbFieldInfo;
@@ -802,6 +906,11 @@ begin
   Result := FID;
 end;
 
+function TDbItem.GetIDStr(): string;
+begin
+  Result := IntToStr(FID);
+end;
+
 procedure TDbItem.SetID(AValue: TDbItemID);
 begin
   FID := AValue;
@@ -815,6 +924,14 @@ end;
 procedure TDbItem.SetName(const AValue: string);
 begin
   FName := AValue;
+end;
+
+procedure TDbItem.Assign(AItem: TDbitem);
+var
+  i: Integer;
+begin
+  for i := 0 to DbTableInfo.FieldsCount - 1 do
+    Self.Values[DbTableInfo.FieldNames[i]] := AItem.Values[DbTableInfo.FieldNames[i]];
 end;
 
 procedure TDbItem.InitValues();
@@ -893,12 +1010,85 @@ begin
   self.SetValue(AName, IntToStr(AValue));
 end;
 
+function TDbItem.GetValueAsDateTime(const AName: string): TDateTime;
+begin
+  Result := Int64ToDateTime(StrToInt64Def(self.GetValue(AName), 0));
+end;
+
+procedure TDbItem.SetValueAsDateTime(const AName: string; AValue: TDateTime);
+begin
+  self.SetValue(AName, IntToStr(DateTimeToInt64(AValue)));
+end;
+
+function TDbItem.IsNew(): Boolean;
+begin
+  Result := (FFlags and ITEM_FLAG_NEW) <> 0;
+end;
+
+function TDbItem.IsDeleted(): Boolean;
+begin
+  Result := (FFlags and ITEM_FLAG_DELETED) <> 0;
+end;
+
+function TDbItem.IsLocked(): Boolean;
+begin
+  Result := (FFlags and ITEM_FLAG_LOCKED) <> 0;
+end;
+
+procedure TDbItem.SetFlag(AFlagId: Integer; AValue: Boolean);
+begin
+  if AValue then
+    FFlags := FFlags or AFlagId
+  else
+    FFlags := FFlags and (not AFlagId);
+end;
+
 // === TDbItemList ===
 constructor TDbItemList.Create(ADbTableInfo: TDbTableInfo; AManager: TDbManager);
 begin
   inherited Create(True);
   FDbTableInfo := ADbTableInfo;
   FDbManager := AManager;
+end;
+
+constructor TDbItemList.Create(AParentList: TDbItemList);
+begin
+  inherited Create(False);
+  FParentList := AParentList;
+  FDbTableInfo := FParentList.DbTableInfo;
+  FDbManager := FParentList.DbManager;
+end;
+
+function TDbItemList.GetIndexById(AItemID: TDbItemID): Integer;
+var
+  iL, iR, iM: Integer;
+  TmpID: TDbItemID;
+begin
+  // binary search
+  Result := -1;
+  iL := 0;
+  iR := Count-1;
+  while iL <= iR do
+  begin
+    iM := (iL + iR) div 2;
+    TmpID := GetItemByIndex(iM).GetID();
+    if AItemID > TmpID then
+    begin
+      iL := iM + 1;
+      Result := -(iM + 2);
+    end
+    else
+    if AItemID < TmpID then
+    begin
+      iR := iM - 1;
+      Result := -(iM + 1);
+    end
+    else
+    begin
+      Result := iM;
+      Break;
+    end;
+  end;
 end;
 
 procedure TDbItemList.FetchAll();
@@ -913,7 +1103,22 @@ begin
     DbManager.DbDriver.SetTable(self);
 end;
 
+function TDbItemList.IsSorted(): Boolean;
+begin
+  Result := (FFlags and LIST_FLAG_SORTED) <> 0;
+end;
+
+procedure TDbItemList.SetFlag(AFlagId: Integer; AValue: Boolean);
+begin
+  if AValue then
+    FFlags := FFlags or AFlagId
+  else
+    FFlags := FFlags and (not AFlagId);
+end;
+
 function TDbItemList.AddItem(AItem: TDbItem; SetNewID: Boolean = False): Integer;
+var
+  n: Integer;
 begin
   if SetNewID then
   begin
@@ -931,7 +1136,23 @@ begin
       self.FLastID := AItem.GetID;
   end;
   AItem.DbTableInfo := FDbTableInfo;
-  Result := self.Add(AItem);
+  if IsSorted then
+  begin
+    // если отсортировано по ID, то вставляем с сохранением сортировки
+    n := GetIndexById(AItem.GetID());
+    if n < 0 then
+    begin
+      Result := -n - 1;
+      if Result >= Count then
+        Result := self.Add(AItem)
+      else
+        self.Insert(Result, Aitem);
+    end
+    else
+      raise Exception.Create('TDbItemList.AddItem('+AItem.GetIDStr() + '): ID already exists!');
+  end
+  else
+    Result := self.Add(AItem);
 end;
 
 function TDbItemList.GetItemByIndex(AIndex: Integer): TDbItem;
@@ -942,15 +1163,25 @@ end;
 function TDbItemList.GetItemByID(ItemID: TDbItemID): TDbItem;
 var
   i: Integer;
-  n: Int64;
 begin
-  for i := 0 to self.Count - 1 do
+  if IsSorted then
   begin
-    n := (self.Items[i] as TDbItem).GetID;
-    if n = ItemID then
+    // если отсортировано по ID, то быстрый двоичный поиск
+    i := GetIndexById(ItemID);
+    if i >= 0 then
     begin
       Result := (self.Items[i] as TDbItem);
-      Exit;
+      if Result.GetID = ItemID then
+        Exit;
+    end;
+  end
+  else
+  begin
+    for i := 0 to self.Count - 1 do
+    begin
+      Result := (self.Items[i] as TDbItem);
+      if Result.GetID = ItemID then
+        Exit;
     end;
   end;
   Result := nil;
@@ -1010,7 +1241,14 @@ end;
 function TDbItemList.NewItem(): TDbItem;
 begin
   Result := DbTableInfo.GetDbItemClass().Create();
-  AddItem(Result, True);
+  Result.SetFlag(ITEM_FLAG_NEW, True);
+  if Assigned(ParentList) then
+  begin
+    ParentList.AddItem(Result, True);
+    AddItem(Result, False);
+  end
+  else
+    AddItem(Result, True);
 end;
 
 function TDbDriver.GetTablesList: TDbTableInfoList;
@@ -1048,6 +1286,7 @@ end;
 function TDbDriver.DeleteDBItem(AItem: TDBItem): Boolean;
 begin
   Result := False;
+  AItem.SetFlag(ITEM_FLAG_DELETED, True);
   if Assigned(AItem.DbTableInfo.ItemsCache) then
   begin
     AItem.DbTableInfo.ItemsCache.Extract(AItem);
@@ -1072,12 +1311,12 @@ end;
 
 procedure TDbDriverCSV.CheckTable(TableInfo: TDbTableInfo);
 begin
-  if TableInfo.Valid then
+  if TableInfo.IsValid then
     Exit;
   if TablesList.IndexOf(TableInfo) >= 0 then
     Exit;
 
-  TableInfo.Valid := True;
+  TableInfo.IsValid := True;
   TablesList.Add(TableInfo);
 end;
 
@@ -1144,7 +1383,7 @@ begin
     sl.LoadFromFile(fn);
     fl.CommaText := Filter;
 
-    // РїРµСЂРІР°СЏ СЃС‚СЂРѕРєР° - СЃРїРёСЃРѕРє РєРѕР»РѕРЅРѕРє!
+    // первая строка - список колонок!
     for i := 0 to sl.Count - 1 do
     begin
       if i = 0 then
@@ -1162,7 +1401,7 @@ begin
       ot := otUpdate;
       if FEventSourcingMode then
       begin
-        // РѕР±СЂР°Р±РѕС‚РєР° РїРµСЂРІРѕРіРѕ СЃРёРјРІРѕР»Р° РїРµСЂРІРѕР№ РєРѕР»РѕРЅРєРё
+        // обработка первого символа первой колонки
         if Copy(vl[0], 1, 1) = '-' then
           ot := otDelete;
         vl[0] := Copy(vl[0], 2, MaxInt);
@@ -1305,7 +1544,7 @@ begin
 
   if FEventSourcingMode then
   begin
-    // РґРѕР±Р°РІР»РµРЅРёРµ РёР·РјРµРЅРµРЅРёСЏ
+    // добавление изменения
     s := ' ' + ItemToStrCSV(AItem) + sLineBreak;
     fn := GetTableFileName(AItem.DbTableInfo);
     AppendStrToFile(fn, s);
@@ -1313,47 +1552,76 @@ begin
     Exit;
   end;
 
-  TmpItemList := TDbItemList.Create(AItem.DbTableInfo, DbManager);
-  try
-    Self.GetTable(TmpItemList);
-    TmpItem := TmpItemList.GetItemByID(AItem.GetID);
-    if Assigned(TmpItem) then
-    begin
+  if Assigned(AItem.DbTableInfo.ItemsCache) then
+    Self.SetTable(AItem.DbTableInfo.ItemsCache)
+  else
+  begin
+    // читаем всю таблицу, находим/добавляем элемент, обновляем элемент, сохраняем всю таблицу
+    TmpItemList := TDbItemList.Create(AItem.DbTableInfo, DbManager);
+    try
+      Self.GetTable(TmpItemList);
+      TmpItem := TmpItemList.GetItemByID(AItem.GetID);
+      if not Assigned(TmpItem) then
+        TmpItem := TmpItemList.NewItem();
+
       for i := 0 to AItem.DbTableInfo.FieldsCount - 1 do
       begin
         fn := AItem.DbTableInfo.GetFieldName(i);
         TmpItem.Values[fn] := AItem.Values[fn];
       end;
       Self.SetTable(TmpItemList);
+      Result := True;
+    finally
+      FreeAndNil(TmpItemList);
     end;
-    Result := True;
-  finally
-    FreeAndNil(TmpItemList);
   end;
 end;
 
 function TDbDriverCSV.DeleteDBItem(AItem: TDBItem): Boolean;
 var
   s, sFileName: string;
+  TmpItemList: TDbItemList;
+  TmpItem: TDbItem;
 begin
-  Result := inherited DeleteDBItem(AItem);
+  Result := inherited DeleteDBItem(AItem); // extract from cache
   sFileName := GetTableFileName(AItem.DbTableInfo);
   s := '-' + IntToStr(AItem.GetID()) + ',' + IntToStr(DateTimeToInt64(Now()));
-  if FEventSourcingMode then
-  begin
-    // РґРѕР±Р°РІР»РµРЅРёРµ РІ С„Р°Р№Р» С‚Р°Р±Р»РёС†С‹
-    AppendStrToFile(sFileName, s + sLineBreak);
-  end;
-
   if LogFileName <> '' then
   begin
     AppendStrToFile(LogFileName, s + ',' + AItem.DbTableInfo.TableName + sLineBreak);
+  end;
+
+  if FEventSourcingMode then
+  begin
+    // добавление в файл таблицы
+    Result := AppendStrToFile(sFileName, s + sLineBreak);
+    Exit;
+  end;
+
+  if Assigned(AItem.DbTableInfo.ItemsCache) then
+    Self.SetTable(AItem.DbTableInfo.ItemsCache)
+  else
+  begin
+    // читаем всю таблицу, удаляем элемент, сохраняем всю таблицу
+    TmpItemList := TDbItemList.Create(AItem.DbTableInfo, DbManager);
+    try
+      Self.GetTable(TmpItemList);
+      TmpItem := TmpItemList.GetItemByID(AItem.GetID);
+      if Assigned(TmpItem) then
+        TmpItemList.Remove(TmpItem);
+
+      Self.SetTable(TmpItemList);
+      Result := True;
+    finally
+      FreeAndNil(TmpItemList);
+    end;
   end;
 end;
 
 initialization
 
 LocalDefaultDbModel := TDbManager.Create();
+GlobalDbManager := LocalDefaultDbModel;
 
 GlobalUseSnowflakeID := False;
 SnowflakeIDPrevTime := 0;

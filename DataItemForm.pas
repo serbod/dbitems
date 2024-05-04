@@ -6,7 +6,7 @@ interface
 
 uses
   Classes, SysUtils, Forms, Controls, Graphics, Dialogs, ValEdit, ExtCtrls,
-  Buttons, DbUnit, RFUtils, Grids;
+  Buttons, DbUnit, RFUtils, Grids, ExtDlgs;
 
 type
 
@@ -55,21 +55,57 @@ procedure TFormDataItem.vleItemButtonClick(Sender: TObject; aCol, aRow: Integer)
 var
   TableInfo: TDbTableInfo;
   ItemProp: TItemProp;
+  sFieldName, sValue: string;
   FieldInfo: TDbFieldInfo;
   TmpItem: TDbItem;
+  cd: TCalendarDialog;
+  nn: Int64;
 begin
   if not Assigned(DbItem) then Exit;
   TableInfo := DbItem.DbTableInfo;
   ItemProp := vleItem.ItemProps[aRow-1];
   if not Assigned(ItemProp) then Exit;
-  FieldInfo := TableInfo.GetFieldByName(ItemProp.KeyDesc);
-  if Assigned(FieldInfo.MasterTable) then
+  sFieldName := ItemProp.KeyDesc;
+  sValue := '';
+  // name:value
+  if Pos(':', sFieldName) > 0 then
   begin
-    TmpItem := nil;
+    sValue := sFieldName;
+    sFieldName := ExtractFirstWord(sValue, ':');
+  end;
+  FieldInfo := TableInfo.GetFieldByName(sFieldName);
+  if Assigned(FieldInfo) and Assigned(FieldInfo.MasterTable) then
+  begin
+    TmpItem := nil; // todo: find existing item from cache
     GlobalDbManager.SelectItemFromList(FieldInfo.MasterTable.ItemsCache, TmpItem);
     if Assigned(TmpItem) then
+    begin
       vleItem.Values[FieldInfo.FieldDescription] := TmpItem.GetName();
+      ItemProp.KeyDesc := sFieldName + ':' + TmpItem.GetIDStr();
+    end;
+  end
+  else
+  if Assigned(FieldInfo) and (FieldInfo.FieldType = DB_FIELD_TYPE_DATETIME) then
+  begin
+    // date dialog
+    cd := TCalendarDialog.Create(Self);
+    try
+      nn := StrToInt64Def(sValue, 0);
+      if nn = 0 then
+        cd.Date := Now
+      else
+        cd.Date := Int64ToDateTime(nn);
+      if cd.Execute then
+      begin
+        nn := DateTimeToInt64(cd.Date);
+        vleItem.Values[FieldInfo.FieldDescription] := FormatDateTime('YYYY-MM-DD', cd.Date);
+        ItemProp.KeyDesc := sFieldName + ':' + IntToStr(nn);
+      end;
+    finally
+      cd.Free();
+    end;
   end;
+
 end;
 
 procedure TFormDataItem.vleItemEditingDone(Sender: TObject);
@@ -87,9 +123,10 @@ end;
 procedure TFormDataItem.FormFromItem;
 var
   TableInfo: TDbTableInfo;
-  i, n: Integer;
+  i, ii, n: Integer;
   sFieldName, sFieldDesc, sFieldValue: string;
   ItemProp: TItemProp;
+  TmpField: TDbFieldInfo;
 begin
   if not Assigned(DbItem) then Exit;
 
@@ -103,8 +140,9 @@ begin
     if TableInfo.Fields[i].Width = 0 then
       Continue;
 
-    sFieldName := TableInfo.Fields[i].FieldName;
-    sFieldDesc := TableInfo.Fields[i].FieldDescription;
+    TmpField := TableInfo.Fields[i];
+    sFieldName := TmpField.FieldName;
+    sFieldDesc := TmpField.FieldDescription;
     if sFieldDesc = '' then
       sFieldDesc := sFieldName;
     sFieldValue := DbItem.GetValueText(sFieldName);
@@ -114,12 +152,28 @@ begin
     ItemProp.KeyDesc := sFieldName;
     if sFieldName = 'id' then
       ItemProp.ReadOnly := True;
-    if TableInfo.Fields[i].MasterTable <> nil then
+    if TmpField.MasterTable <> nil then
       ItemProp.EditStyle := esEllipsis
     else
-    if (TableInfo.Fields[i].FieldType = DB_FIELD_TYPE_LINK)
-    or (TableInfo.Fields[i].FieldType = DB_FIELD_TYPE_DATETIME) then
+    if (TmpField.FieldType = DB_FIELD_TYPE_LINK)
+    or (TmpField.FieldType = DB_FIELD_TYPE_DATETIME) then
+    begin
+      // links and dates can be selected from dialogs
       ItemProp.EditStyle := esEllipsis;
+      // name:value
+      ItemProp.KeyDesc := ItemProp.KeyDesc + ':' + DbItem.GetValue(sFieldName);
+    end
+    else
+    if (TmpField.FieldType = DB_FIELD_TYPE_INTEGER)
+    and (Length(TmpField.EnumValues) > 0) then
+    begin
+      // enumeration, fill dropdown list
+      ItemProp.EditStyle := esPickList;
+      ItemProp.PickList.Clear;
+      for ii := Low(TmpField.EnumValues) to High(TmpField.EnumValues) do
+        ItemProp.PickList.Add(TmpField.EnumValues[ii]);
+    end;
+
   end;
   vleItem.EndUpdate();
   btnOK.Enabled := False;
@@ -128,7 +182,7 @@ end;
 procedure TFormDataItem.FormToItem;
 var
   TableInfo: TDbTableInfo;
-  i, n: Integer;
+  i, ii, n: Integer;
   sFieldName, sFieldDesc, sOldValue, sNewValue: string;
   ItemProp: TItemProp;
 begin
@@ -146,14 +200,35 @@ begin
     if sFieldName = 'id' then
       Continue;
 
+    // name:value
+    if Pos(':', sFieldName) > 0 then
+    begin
+      sNewValue := sFieldName;
+      sFieldName := ExtractFirstWord(sNewValue, ':');
+    end
+    else
+      sNewValue := vleItem.Values[sFieldDesc];
     sOldValue := DbItem.GetValueText(sFieldName);
-    sNewValue := vleItem.Values[sFieldDesc];
     if sOldValue = sNewValue then
       Continue;
 
     if ItemProp.EditStyle = esEllipsis then
     begin
-      // todo
+      // name and value already extracted
+      DbItem.SetValue(sFieldName, sNewValue);
+    end
+    else
+    if ItemProp.EditStyle = esPickList then
+    begin
+      // index of dropdown list item
+      for ii := 0 to ItemProp.PickList.Count-1 do
+      begin
+        if ItemProp.PickList[ii] = sNewValue then
+        begin
+          DbItem.SetValue(sFieldName, IntToStr(ii));
+          Break;
+        end;
+      end;
     end
     else
       DbItem.SetValue(sFieldName, sNewValue);
