@@ -119,9 +119,11 @@ type
     TableDescription: string;
     // Key field name (ID)
     KeyFieldName: string;
-    // ѕризнак, того, что таблица соответствует своему аналогу в базе данных
+    // time of last write or full read
+    ActualTimestamp: TDateTime;
+    // True if table structure same as in database
     IsValid: Boolean;
-    // ѕризнак, что это журнал с посто€нно добавл€емыми элементами
+    // True if it is journal with constantly appended items
     IsJournal: Boolean;
 
     constructor Create(AItemClass: TDbItemClass);
@@ -200,7 +202,7 @@ type
     function GetID(): TDbItemID;
     function GetIDStr(): string;
     procedure SetID(AValue: TDbItemID);
-    function GetName(): string;
+    function GetName(): string; virtual;
     procedure SetName(const AValue: string);
     //  опирование значений всех полей из заданного элемента
     procedure Assign(AItem: TDbitem); virtual;
@@ -319,6 +321,10 @@ type
     function DeleteDBItem(AItem: TDBItem): Boolean; virtual;
     // возвращает название элемента по имени таблицы и ID
     function GetDbItemName(ATableName: string; AItemID: TDbItemID): string;
+
+    // создает список элементов из заданной таблицы по заданному фильтру
+    // ‘ильтр в виде comma-delimited string как поле=значение (см. TDbDriver.GetTable)
+    function CreateDbItemList(ATableName, AFilter: string): TDbItemList;
 
     // обновл€ет свойства таблицы или всех таблиц
     // устанавливает прив€зки к MasterTable
@@ -690,6 +696,17 @@ begin
 
 end;
 
+function TDbManager.CreateDbItemList(ATableName, AFilter: string): TDbItemList;
+var
+  TmpTabInfo: TDbTableInfo;
+begin
+  Result := nil;
+  TmpTabInfo := GetDbTableInfo(ATableName);
+  if not Assigned(TmpTabInfo) then Exit;
+  Result := TDbItemList.Create(GetDbTableInfo(ATableName), Self);
+  DbDriver.GetTable(Result, AFilter);
+end;
+
 procedure TDbManager.RefreshDbTableInfo(ATableName: string);
 var
   TmpTabInfo: TDbTableInfo;
@@ -966,8 +983,34 @@ begin
 end;
 
 function TDbItem.GetValueText(const AName: string): string;
+var
+  i, n: Integer;
 begin
-  Result := GetValue(AName);
+  if AName = 'id' then
+    Result := IntToStr(FID)
+  //else if AName = 'timestamp' then
+  //  Result := DateTimeToStr(self.Timestamp)
+  else if AName = 'name' then
+    Result := FName
+  else
+  begin
+    i := Self.DbTableInfo.GetFieldIndex(AName);
+    if i >= 0 then
+    begin
+      if (Length(Self.DbTableInfo.Fields[i].EnumValues) > 0) then
+      begin
+        n := GetValueAsInteger(AName);
+        if (n >= 0) and (n < Length(Self.DbTableInfo.Fields[i].EnumValues)) then
+        begin
+          Result := Self.DbTableInfo.Fields[i].EnumValues[n];
+          Exit;
+        end;
+      end;
+      Result := GetValue(AName);
+    end
+    else
+      Result := '';
+  end;
 end;
 
 procedure TDbItem.SetValue(const AName: string; AValue: string);
@@ -1095,12 +1138,14 @@ procedure TDbItemList.FetchAll();
 begin
   if Assigned(DbManager.DbDriver) then
     DbManager.DbDriver.GetTable(self);
+  DbTableInfo.ActualTimestamp := Now();
 end;
 
 procedure TDbItemList.StoreAll();
 begin
   if Assigned(DbManager.DbDriver) then
     DbManager.DbDriver.SetTable(self);
+  DbTableInfo.ActualTimestamp := Now();
 end;
 
 function TDbItemList.IsSorted(): Boolean;

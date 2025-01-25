@@ -1,5 +1,5 @@
 unit DataStorage;
-{ Author: Sergey Bodrov (serbod@gmail.com) 2010-2016 }
+{ Author: Sergey Bodrov (serbod@gmail.com) 2010-2020 }
 
 {$ifdef FPC}
 {$mode objfpc}{$H+}
@@ -8,10 +8,14 @@ unit DataStorage;
 interface
 
 uses
-  Classes, SysUtils;
+  Classes, SysUtils, Types;
 
 type
   TDataStorageType = (stUnknown, stString, stInteger, stNumber, stList, stDictionary);
+
+  {$ifndef UNICODE}
+  RawByteString = AnsiString;
+  {$endif}
 
   { IDataStorage }
 
@@ -22,14 +26,15 @@ type
     function GetStorageType(): TDataStorageType;
     { Set value, if storage type is Dictionary, then AName used }
     procedure SetValue(AValue: IDataStorage; const AName: string = ''); overload;
-    procedure SetValue(AValue: AnsiString; const AName: string = ''); overload;
+    procedure SetValue(AValue: RawByteString; const AName: string = ''); overload;
+    procedure SetValue(AValue: TByteDynArray; const AName: string = ''); overload;
     procedure SetValue(AValue: Integer; const AName: string = ''); overload;
     procedure SetValue(AValue: Int64; const AName: string = ''); overload;
     procedure SetValue(AValue: Real; const AName: string = ''); overload;
     procedure SetValue(AValue: Boolean; const AName: string = ''); overload;
 
     { get storage value }
-    function GetValue(): AnsiString;
+    function GetValue(): RawByteString;
     { Get storage item by name }
     function GetObject(const AName: string): IDataStorage; overload;
     { Get storage item by index }
@@ -38,6 +43,7 @@ type
     function GetObjectName(Index: integer): string;
     { Get string by name (from dictionary). If name empty, get value }
     function GetString(const AName: string = ''): string;
+    function GetBytes(const AName: string = ''): TByteDynArray;
     function GetInteger(const AName: string = ''): Integer;
     function GetInt64(const AName: string = ''): Int64;
     function GetCardinal(const AName: string = ''): Cardinal;
@@ -55,11 +61,11 @@ type
     { stUnknown, stString, stInteger, stNumber, stList, stDictionary }
     FStorageType: TDataStorageType;
     { Value for (String, Integer, Number) types }
-    FValue: AnsiString;
+    FValue: RawByteString;
     FIntfList: TInterfaceList;
     { [name:object] items storage }
     FItems: TStringList;
-    procedure AddValue(AStorageType: TDataStorageType; const AName: string; const AValue: AnsiString);
+    procedure AddValue(AStorageType: TDataStorageType; const AName: string; const AValue: RawByteString);
   public
     constructor Create(AStorageType: TDataStorageType);
     destructor Destroy(); override;
@@ -70,15 +76,16 @@ type
     { Set value, if storage type is Dictionary, then AName used
       for (List) is add value}
     procedure SetValue(AValue: IDataStorage; const AName: string = ''); overload;
-    procedure SetValue(AValue: AnsiString; const AName: string = ''); overload;
+    procedure SetValue(AValue: RawByteString; const AName: string = ''); overload;
+    procedure SetValue(AValue: TByteDynArray; const AName: string = ''); overload;
     procedure SetValue(AValue: Integer; const AName: string = ''); overload;
     procedure SetValue(AValue: Int64; const AName: string = ''); overload;
     procedure SetValue(AValue: Real; const AName: string = ''); overload;
     procedure SetValue(AValue: Boolean; const AName: string = ''); overload;
     { get storage value }
-    function GetValue(): AnsiString;
+    function GetValue(): RawByteString;
     { set storage value }
-    procedure SetValueStr(const AValue: AnsiString); overload;
+    procedure SetValueStr(const AValue: RawByteString); overload;
     { Get storage item by name }
     function GetObject(const AName: string): IDataStorage; overload;
     { Get storage item by index }
@@ -87,6 +94,7 @@ type
     function GetObjectName(Index: integer): string;
     { Get string by name (from dictionary). If name empty, get value }
     function GetString(const AName: string = ''): string;
+    function GetBytes(const AName: string = ''): TByteDynArray;
     function GetInteger(const AName: string = ''): Integer;
     function GetInt64(const AName: string = ''): Int64;
     function GetCardinal(const AName: string = ''): Cardinal;
@@ -103,7 +111,7 @@ type
     { stUnknown, stString, stInteger, stNumber, stList, stDictionary }
     property StorageType: TDataStorageType read GetStorageType;
     { Value for (String, Integer, Number) types }
-    property Value: AnsiString read GetValue write SetValueStr;
+    property Value: RawByteString read GetValue write SetValueStr;
   end;
 
 
@@ -113,17 +121,13 @@ type
   public
     function GetName(): string; virtual;
     // Serialize storage to string
-    function StorageToString(AStorage: IDataStorage): AnsiString; virtual; abstract;
+    function StorageToString(AStorage: IDataStorage): RawByteString; virtual; abstract;
     // De-serialize string into AStorage (not nil)
-    function StorageFromString(const AString: AnsiString): IDataStorage; virtual; abstract;
+    function StorageFromString(const AString: RawByteString): IDataStorage; virtual; abstract;
     // Save storage to file. Filename must be without extension
     function StorageToFile(AStorage: IDataStorage; AFileName: string): Boolean; virtual; abstract;
     // Fill AStorage (not nil) from file. Filename must be without extension
     function StorageFromFile(AFileName: string): IDataStorage; virtual; abstract;
-    // Save storage to TStream.
-    function StorageToStream(AStorage: IDataStorage; AStream: TStream): Boolean; virtual; abstract;
-    // Fill AStorage (not nil) from TStream.
-    function StorageFromStream(AStream: TStream): IDataStorage; virtual; abstract;
   end;
 
   { TDataSerializerBencode }
@@ -140,64 +144,65 @@ type
   }
   TDataSerializerBencode = class(TDataSerializer)
   private
-    function ReadBencodeValue(const AString: AnsiString; var APos: Cardinal; ALen: Cardinal): IDataStorage;
-    function ReadBencodeIntegerStr(const AString: AnsiString; var APos: Cardinal; ALen: Cardinal): AnsiString;
-    function ReadBencodeString(const AString: AnsiString; var APos: Cardinal; ALen: Cardinal): AnsiString;
-    function ReadBencodeList(const AString: AnsiString; var APos: Cardinal; ALen: Cardinal): IDataStorage;
-    function ReadBencodeDictionary(const AString: AnsiString; var APos: Cardinal; ALen: Cardinal): IDataStorage;
+    function StorageToBencode(AStorage: IDataStorage): RawByteString;
+    function StorageToStream(AStorage: IDataStorage; AStream: TStream): Boolean;
+    function ReadBencodeValue(const AString: RawByteString; var APos: Cardinal; ALen: Cardinal): IDataStorage;
+    function ReadBencodeIntegerStr(const AString: RawByteString; var APos: Cardinal; ALen: Cardinal): RawByteString;
+    function ReadBencodeString(const AString: RawByteString; var APos: Cardinal; ALen: Cardinal): RawByteString;
+    function ReadBencodeList(const AString: RawByteString; var APos: Cardinal; ALen: Cardinal): IDataStorage;
+    function ReadBencodeDictionary(const AString: RawByteString; var APos: Cardinal; ALen: Cardinal): IDataStorage;
   public
     function GetName(): string; override;
-    function StorageToString(AStorage: IDataStorage): AnsiString; override;
-    function StorageFromString(const AString: AnsiString): IDataStorage; override;
+    function StorageToString(AStorage: IDataStorage): RawByteString; override;
+    function StorageFromString(const AString: RawByteString): IDataStorage; override;
     function StorageToFile(AStorage: IDataStorage; AFileName: string): Boolean; override;
     function StorageFromFile(AFileName: string): IDataStorage; override;
-    function StorageToStream(AStorage: IDataStorage; AStream: TStream): Boolean; override;
-    function StorageFromStream(AStream: TStream): IDataStorage; override;
   end;
 
 
   // shared functions
-function StrToFile(const FileName, Str: AnsiString): Boolean;
+function StrToFile(const FileName, Str: RawByteString): Boolean;
 
-function FileToStr(const FileName: string): AnsiString;
+function FileToStr(const FileName: string): RawByteString;
 
 var
   DataFormatSettings: TFormatSettings;
 
 implementation
 
-function StreamToStr(AStream: TStream): AnsiString;
+function StreamToStr(AStream: TStream): RawByteString;
 var
-  len, n: Integer;
+  ss: TStringStream;
 begin
-  if Assigned(AStream) and (AStream.Size > 0) then
-  begin
-    len := AStream.Size;
-    SetLength(Result, len);
+  Result := '';
+  ss := TStringStream.Create('');
+  try
     AStream.Seek(0, soFromBeginning);
-    n := AStream.Read(Result[1], AStream.Size);
-    if n < len then
-      SetLength(Result, n);
-  end
-  else
-    Result := '';
-end;
-
-function StrToStream(const s: AnsiString; AStream: TStream): Boolean;
-var
-  len, n: Integer;
-begin
-  len := Length(s);
-  n := 0;
-  if Assigned(AStream) and (len > 0) then
-  begin
-    AStream.Seek(0, soFromBeginning);
-    n := AStream.Write(s[1], len);
+    ss.Size := AStream.Size;
+    ss.Position := 0;
+    ss.CopyFrom(AStream, AStream.Size);
+    Result := ss.DataString;
+  finally
+    ss.Free();
   end;
-  Result := (n = len);
 end;
 
-function StrToFile(const FileName, Str: AnsiString): Boolean;
+function StrToStream(const s: RawByteString; AStream: TStream): Boolean;
+var
+  ss: TStringStream;
+begin
+  ss := TStringStream.Create(s);
+  try
+    ss.Seek(0, soFromBeginning);
+    AStream.Seek(0, soFromBeginning);
+    AStream.CopyFrom(ss, ss.Size);
+    Result := True;
+  finally
+    ss.Free();
+  end;
+end;
+
+function StrToFile(const FileName, Str: RawByteString): Boolean;
 var
   fs: TFileStream;
 begin
@@ -218,7 +223,7 @@ begin
   end;
 end;
 
-function FileToStr(const FileName: string): AnsiString;
+function FileToStr(const FileName: string): RawByteString;
 var
   fs: TFileStream;
 begin
@@ -238,6 +243,26 @@ begin
   finally
     fs.Free();
   end;
+end;
+
+function RawToBytes(const AValue: UTF8String): TByteDynArray;
+var
+  n: integer;
+begin
+  n := Length(AValue);
+  SetLength(Result, n);
+  if n > 0 then
+    Move(AValue[1], Result[0], n);
+end;
+
+function BytesToRaw(const AValue: TByteDynArray): UTF8String;
+var
+  n: integer;
+begin
+  n := Length(AValue);
+  SetLength(Result, n);
+  if n > 0 then
+    Move(AValue[0], Result[1], n);
 end;
 
 { TDataStorage }
@@ -315,6 +340,27 @@ begin
   end;
 end;
 
+function TDataStorage.GetBytes(const AName: string = ''): TByteDynArray;
+var
+  n: integer;
+  TmpItem: IDataStorage;
+begin
+  if AName = '' then
+  begin
+    Result := RawToBytes(FValue);
+  end
+  else
+  begin
+    n := FItems.IndexOf(AName);
+    if n <> -1 then
+    begin
+      TmpItem := IDataStorage(FIntfList[n]);
+      Result := RawToBytes(TmpItem.GetValue());
+      //if TmpItem.StorageType=stString then Result:=TmpItem.Value;
+    end;
+  end;
+end;
+
 function TDataStorage.GetInteger(const AName: string): Integer;
 begin
   Result := StrToIntDef(GetString(AName), 0);
@@ -367,13 +413,13 @@ begin
   Result := FStorageType;
 end;
 
-function TDataStorage.GetValue(): AnsiString;
+function TDataStorage.GetValue(): RawByteString;
 begin
   Result := FValue;
 end;
 
 procedure TDataStorage.AddValue(AStorageType: TDataStorageType;
-  const AName: string; const AValue: AnsiString);
+  const AName: string; const AValue: RawByteString);
 var
   TmpItem: IDataStorage;
 begin
@@ -384,7 +430,7 @@ begin
   FIntfList.Add(TmpItem);
 end;
 
-procedure TDataStorage.SetValue(AValue: AnsiString; const AName: string);
+procedure TDataStorage.SetValue(AValue: RawByteString; const AName: string);
 begin
   if (FStorageType = stDictionary) or (FStorageType = stList) then
   begin
@@ -392,6 +438,16 @@ begin
   end
   else
     FValue := AValue;
+end;
+
+procedure TDataStorage.SetValue(AValue: TByteDynArray; const AName: string = '');
+begin
+  if (FStorageType = stDictionary) or (FStorageType = stList) then
+  begin
+    AddValue(stString, AName, BytesToRaw(AValue));
+  end
+  else
+    FValue := BytesToRaw(AValue);
 end;
 
 procedure TDataStorage.SetValue(AValue: IDataStorage; const AName: string);
@@ -448,7 +504,7 @@ begin
     FValue := FloatToStr(AValue, DataFormatSettings);
 end;
 
-procedure TDataStorage.SetValueStr(const AValue: AnsiString);
+procedure TDataStorage.SetValueStr(const AValue: RawByteString);
 begin
   SetValue(AValue);
 end;
@@ -482,24 +538,80 @@ end;
 
 { TDataSerializerBencode }
 
-function TDataSerializerBencode.GetName(): string;
+function TDataSerializerBencode.GetName: string;
 begin
   Result := 'BENCODE';
+end;
+
+function TDataSerializerBencode.StorageToBencode(AStorage: IDataStorage): RawByteString;
+var
+  sName: RawByteString;
+  SubItem: IDataStorage;
+  i: integer;
+  s: RawByteString;
+begin
+  Result := '';
+  case AStorage.GetStorageType() of
+    stString:
+    begin
+      s := AStorage.GetValue();
+      Result := Result + IntToStr(Length(s)) + ':' + s;
+    end;
+
+    stNumber:
+    begin
+      s := AStorage.GetValue();
+      Result := Result + IntToStr(Length(s)) + ':' + s;
+    end;
+
+    stInteger:
+    begin
+      Result := Result + 'i' + AStorage.GetValue() + 'e';
+    end;
+
+    stDictionary:
+    begin
+      Result := Result + 'd';
+      for i := 0 to AStorage.GetCount() - 1 do
+      begin
+        sName := AStorage.GetObjectName(i);
+        SubItem := AStorage.GetObject(i);
+        // name
+        Result := Result + IntToStr(Length(sName)) + ':' + sName;
+        // value
+        Result := Result + StorageToBencode(SubItem);
+      end;
+      Result := Result + 'e';
+    end;
+
+    stList:
+    begin
+      Result := Result + 'l';
+      for i := 0 to AStorage.GetCount() - 1 do
+      begin
+        SubItem := AStorage.GetObject(i);
+        // value
+        Result := Result + StorageToBencode(SubItem);
+      end;
+      Result := Result + 'e';
+    end;
+  end;
 end;
 
 function TDataSerializerBencode.StorageToStream(AStorage: IDataStorage;
   AStream: TStream): Boolean;
 
-procedure WriteStr(const AStr: AnsiString);
+procedure WriteStr(const AStr: RawByteString);
 begin
-  AStream.Write(PAnsiChar(AStr)^, Length(AStr));
+  if Length(AStr) > 0 then
+    AStream.Write(AStr[1], Length(AStr));
 end;
 
 var
-  sName: AnsiString;
+  sName: RawByteString;
   SubItem: IDataStorage;
   i: integer;
-  s: AnsiString;
+  s: RawByteString;
 begin
   case AStorage.GetStorageType() of
     stString:
@@ -549,15 +661,7 @@ begin
   Result := True;
 end;
 
-function TDataSerializerBencode.StorageFromStream(AStream: TStream): IDataStorage;
-var
-  s: AnsiString;
-begin
-  s := StreamToStr(AStream);
-  Result := StorageFromString(s);
-end;
-
-function TDataSerializerBencode.ReadBencodeIntegerStr(const AString: AnsiString; var APos: Cardinal; ALen: Cardinal): AnsiString;
+function TDataSerializerBencode.ReadBencodeIntegerStr(const AString: RawByteString; var APos: Cardinal; ALen: Cardinal): RawByteString;
 begin
   Result := '';
   if AString[APos] = 'i' then
@@ -576,9 +680,9 @@ begin
   end;
 end;
 
-function TDataSerializerBencode.ReadBencodeString(const AString: AnsiString; var APos: Cardinal; ALen: Cardinal): AnsiString;
+function TDataSerializerBencode.ReadBencodeString(const AString: RawByteString; var APos: Cardinal; ALen: Cardinal): RawByteString;
 var
-  sValue: AnsiString;
+  sValue: RawByteString;
   ValueLen: Cardinal;
 begin
   Result := '';
@@ -597,9 +701,9 @@ begin
   end;
 end;
 
-function TDataSerializerBencode.ReadBencodeDictionary(const AString: AnsiString; var APos: Cardinal; ALen: Cardinal): IDataStorage;
+function TDataSerializerBencode.ReadBencodeDictionary(const AString: RawByteString; var APos: Cardinal; ALen: Cardinal): IDataStorage;
 var
-  sName: AnsiString;
+  sName: RawByteString;
   SubStorage: IDataStorage;
 begin
   Result := nil;
@@ -625,7 +729,7 @@ begin
   Result := nil;
 end;
 
-function TDataSerializerBencode.ReadBencodeList(const AString: AnsiString;
+function TDataSerializerBencode.ReadBencodeList(const AString: RawByteString;
   var APos: Cardinal; ALen: Cardinal): IDataStorage;
 var
   SubStorage: IDataStorage;
@@ -652,7 +756,7 @@ begin
   Result := nil;
 end;
 
-function TDataSerializerBencode.ReadBencodeValue(const AString: AnsiString;
+function TDataSerializerBencode.ReadBencodeValue(const AString: RawByteString;
   var APos: Cardinal; ALen: Cardinal): IDataStorage;
 begin
   Result := nil;
@@ -693,22 +797,12 @@ begin
   end;
 end;
 
-function TDataSerializerBencode.StorageToString(AStorage: IDataStorage): AnsiString;
-var
-  ms: TMemoryStream;
+function TDataSerializerBencode.StorageToString(AStorage: IDataStorage): RawByteString;
 begin
-  ms := TMemoryStream.Create();
-  try
-    if StorageToStream(AStorage, ms) then
-      Result := StreamToStr(ms)
-    else
-      Result := '';
-  finally
-    ms.Free();
-  end;
+  Result := StorageToBencode(AStorage);
 end;
 
-function TDataSerializerBencode.StorageFromString(const AString: AnsiString): IDataStorage;
+function TDataSerializerBencode.StorageFromString(const AString: RawByteString): IDataStorage;
 var
   n: Cardinal;
 begin
@@ -752,3 +846,4 @@ initialization
 DataFormatSettings.DecimalSeparator := '.';
 
 end.
+

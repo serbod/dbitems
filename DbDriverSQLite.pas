@@ -12,7 +12,7 @@ Usage example:
 interface
 
 uses
-  Classes, SysUtils, DbUnit, ZConnection, ZDataset, Variants;
+  Classes, SysUtils, DbUnit, DB, ZConnection, ZDataset, Variants;
 
 type
 
@@ -329,8 +329,10 @@ var
   n, m: Integer;
   TmpID: TDbItemID;
   Item: TDbItem;
-  fn, sql: string;
+  fi: TDbFieldInfo;
+  s, sql: string;
   fl: TStringList;
+  FieldsArr: array of TField;
 begin
   Result := False;
   if not Active then
@@ -345,7 +347,7 @@ begin
   fl := TStringList.Create(); // filters
   try
     fl.CommaText := Filter;
-
+    // todo: use fields names and access to fields by indexes
     sql := 'SELECT * FROM ' + AnsiQuotedStr(AItemList.DbTableInfo.TableName, '"');
     // filters
     if fl.Count > 0 then
@@ -370,6 +372,15 @@ begin
     //rs:=db.Exec(sql);
     Query.SQL.Text := sql;
     Query.Open();
+
+    // enumerate fields
+    SetLength(FieldsArr, AItemList.DbTableInfo.FieldsCount);
+    for n := 0 to AItemList.DbTableInfo.FieldsCount-1 do
+    begin
+      fi := AItemList.DbTableInfo.Fields[n];
+      FieldsArr[n] := Query.Fields.FieldByName(fi.FieldName);
+    end;
+    // iterate rows
     while not Query.EOF do
     begin
       TmpID := Query.FieldValues[AItemList.DbTableInfo.KeyFieldName];
@@ -385,8 +396,16 @@ begin
         Item := AItemList.NewItem();
       for n := 0 to AItemList.DbTableInfo.FieldsCount - 1 do
       begin
-        fn := AItemList.DbTableInfo.FieldNames[n]; // field name
-        Item.SetValue(fn, VarToStrDef(Query.FieldValues[fn], ''));
+        fi := AItemList.DbTableInfo.Fields[n];
+        // get field value as text
+        if Assigned(FieldsArr[n]) then
+          s := VarToStrDef(FieldsArr[n].Value, '')
+        else
+          s := '';
+        // replace decimal comma to decimal point
+        if (fi.FieldType = 'N') and (Pos(',', s) > 0) then
+          s := StringReplace(s, ',', '.', []);
+        Item.SetValue(fi.FieldName, s);
       end;
       Query.Next();
     end;
@@ -395,6 +414,8 @@ begin
   finally
     FreeAndNil(Query);
   end;
+  if Filter = '' then
+    AItemList.DbTableInfo.ActualTimestamp := Now();
 end;
 
 function TDbDriverSQLite.SetTable(AItemList: TDbItemList; Filter: string = ''): Boolean;
@@ -431,13 +452,15 @@ begin
     finally
     end;
   end;
+  AItemList.DbTableInfo.ActualTimestamp := Now();
 end;
 
 function TDbDriverSQLite.GetDBItem(const AValue: string): TDBItem;
 var
-  sTableName, sItemID, fn, sql: string;
+  sTableName, sItemID, s, sql: string;
   i: Integer;
   TableInfo: TDbTableInfo;
+  fi: TDbFieldInfo;
   Query: TZReadOnlyQuery;
 begin
   Result := nil;
@@ -463,10 +486,15 @@ begin
       Result := TDbItem.Create();
       for i := 0 to TableInfo.FieldsCount - 1 do
       begin
-        fn := TableInfo.FieldNames[i];  // field name
-        Result.SetValue(fn, Query.FieldValues[fn]);
+        fi := TableInfo.Fields[i];
+        s := VarToStrDef(Query.FieldValues[fi.FieldName], '');
+        // replace decimal comma to decimal point
+        if (fi.FieldType = 'N') and (Pos(',', s) > 0) then
+          s := StringReplace(s, ',', '.', []);
+        Result.SetValue(fi.FieldName, s);
       end;
-      Query.Next();
+      //Query.Next();
+      Break;
     end;
 
   finally
@@ -526,6 +554,7 @@ begin
   finally
   end;
   AItem.SetFlag(ITEM_FLAG_NEW, False);
+  TableInfo.ActualTimestamp := Now();
 end;
 
 function TDbDriverSQLite.DeleteDBItem(AItem: TDBItem): Boolean;
@@ -540,6 +569,7 @@ begin
   DebugSQL(sql);
   DB.ExecuteDirect(sql);
   Result := inherited DeleteDBItem(AItem);
+  TableInfo.ActualTimestamp := Now();
 end;
 
 

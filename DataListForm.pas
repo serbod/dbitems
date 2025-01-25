@@ -116,6 +116,8 @@ type
 
     // добавляет кнопку с внешним обработчиком на верхнюю панель
     procedure AddButton(ACaption: string; AOnClick: TNotifyEvent);
+    // удаляет ранее добавленные кнопки
+    procedure ClearButtons();
 
     // список отображаемых элементов, назначается снаружи
     property ItemsList: TDbItemList read FItemsList write SetItemsList;
@@ -669,6 +671,18 @@ begin
   btn.Width := panTop.Canvas.GetTextWidth(ACaption) + 16;
   btn.Caption := ACaption;
   btn.OnClick := AOnClick;
+  btn.Tag := -99;
+end;
+
+procedure TFormDataList.ClearButtons();
+var
+  i: Integer;
+begin
+  for i := panTop.ControlCount-1 downto 0 do
+  begin
+    if panTop.Controls[i].Tag = -99 then
+      panTop.Controls[i].Free();
+  end;
 end;
 
 end.
